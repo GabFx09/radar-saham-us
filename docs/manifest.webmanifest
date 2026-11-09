@@ -1,0 +1,23 @@
+{
+  "name": "Radar Saham US",
+  "short_name": "Radar Saham",
+  "description": "Screener saham Amerika fundamental + teknikal: skor, alasan beli, dan proyeksi kenaikan.",
+  "id": "./",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070b16",
+  "theme_color": "#0a0f1e",
+  "lang": "id",
+  "categories": ["finance", "business"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Strong Buy", "url": "./#/screener?p=strong", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Watchlist", "url": "./#/watchlist", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

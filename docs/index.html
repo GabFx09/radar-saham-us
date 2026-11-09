@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Radar Saham US</title>
+  <meta name="description" content="Screener saham Amerika berbasis fundamental + teknikal: skor, alasan beli, dan proyeksi kenaikan.">
+  <meta name="theme-color" content="#0a0f1e" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Radar Saham">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <script>
+    try { var t = localStorage.getItem('theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="#/" class="brand" aria-label="Beranda">
+        <svg viewBox="0 0 32 32" class="brand-logo" aria-hidden="true">
+          <defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs>
+          <rect width="32" height="32" rx="9" fill="url(#lg)"/>
+          <path d="M7 21l6-6 4 4 8-9" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="25" cy="10" r="2.2" fill="#fff"/>
+        </svg>
+        <span>Radar<b>Saham</b><small>US</small></span>
+      </a>
+      <nav class="topnav" aria-label="Navigasi utama">
+        <a href="#/" data-nav="home">Beranda</a>
+        <a href="#/screener" data-nav="screener">Screener</a>
+        <a href="#/watchlist" data-nav="watchlist">Watchlist</a>
+        <a href="#/metode" data-nav="metode">Metodologi</a>
+      </nav>
+      <div class="top-actions">
+        <button class="icon-btn" id="btnSearch" aria-label="Cari saham">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        </button>
+        <button class="icon-btn hidden" id="btnInstall" aria-label="Install aplikasi">
+          <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+        </button>
+        <button class="icon-btn" id="btnTheme" aria-label="Ganti tema">
+          <svg viewBox="0 0 24 24" class="i-moon"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" class="container" tabindex="-1">
+    <div class="splash">
+      <div class="spinner"></div>
+      <p>Memuat data pasar…</p>
+    </div>
+  </main>
+
+  <nav class="bottomnav" aria-label="Navigasi bawah">
+    <a href="#/" data-nav="home">
+      <svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg><span>Beranda</span>
+    </a>
+    <a href="#/screener" data-nav="screener">
+      <svg viewBox="0 0 24 24"><path d="M4 5h16l-6 8v6l-4-2v-4z"/></svg><span>Screener</span>
+    </a>
+    <a href="#/watchlist" data-nav="watchlist">
+      <svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg><span>Watchlist</span>
+    </a>
+    <a href="#/metode" data-nav="metode">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4m0-4h.01"/></svg><span>Metode</span>
+    </a>
+  </nav>
+
+  <div id="searchOverlay" class="overlay hidden" role="dialog" aria-label="Cari saham">
+    <div class="search-panel">
+      <div class="search-box">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="searchInput" type="search" placeholder="Cari ticker atau nama perusahaan…" autocomplete="off" spellcheck="false">
+        <button class="text-btn" id="searchClose">Tutup</button>
+      </div>
+      <div id="searchResults" class="search-results"></div>
+    </div>
+  </div>
+
+  <div id="sheet" class="sheet-wrap hidden" aria-hidden="true">
+    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet" role="dialog"></div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
