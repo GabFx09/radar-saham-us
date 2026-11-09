@@ -1012,6 +1012,19 @@ def main():
             if done % 25 == 0:
                 log(f"  fundamental: {done}/{len(futs)}")
 
+    # putaran ulang untuk saham yang gagal (timeout / dibatasi Yahoo), lebih pelan
+    for rnd in (1, 2):
+        failed = [s for s in syms if s in prices and s not in raw]
+        if not failed:
+            break
+        log(f"  ulang {len(failed)} saham yang gagal (putaran {rnd})...")
+        time.sleep(20 * rnd)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            for s, data, err in ex.map(fetch_fundamentals, failed):
+                if data:
+                    raw[s] = data
+        log(f"  berhasil total: {len(raw)}")
+
     log("3/4 Menghitung metrik...")
     records = []
     for s, (info, inc, bal, cf) in raw.items():
