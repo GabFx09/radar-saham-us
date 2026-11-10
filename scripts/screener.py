@@ -31,6 +31,9 @@ import pandas as pd
 import requests
 import yfinance as yf
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import geopolitik  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "docs", "data")
 HIST_DIR = os.path.join(OUT_DIR, "history")
@@ -845,6 +848,22 @@ def build_reasons(rec, medians):
           f"Mengembalikan {pct(f['sh_yield'], 1)}/tahun ke pemegang saham (dividen {pct(dv, 1)} + buyback).",
           "Pemegang Saham")
 
+    # ---- geopolitik
+    g = rec.get("geo")
+    if g:
+        TH, gi = geopolitik.THEMES, rec["geo_int"]
+        for k, imp in sorted(g["impact"].items(), key=lambda x: -x[1])[:2]:
+            if imp >= 0.22:
+                P(56 + imp * 40, f"Diuntungkan tema geopolitik {TH[k]['name']} (intensitas "
+                  f"{gi[k]:.0f}/100): {TH[k]['desc'].split(' — ')[0].split(':')[0]}.", "Geopolitik")
+        for k, imp in sorted(g["impact"].items(), key=lambda x: x[1])[:2]:
+            if imp <= -0.25:
+                C(58 + (-imp) * 40, f"Rentan terhadap tema {TH[k]['name']} (intensitas {gi[k]:.0f}/100, "
+                  f"eksposur {g['exp'][k]:+.1f} dari skala -1 s.d. +1).", "Geopolitik")
+        if g["risk"] < 15 and g["score"] >= 60:
+            P(54, f"Tahan guncangan geopolitik: eksposur rendah terhadap tarif, konflik, dan rantai pasok "
+              f"global (skor ketahanan {g['score']:.0f}/100).", "Geopolitik")
+
     # ---- analis
     if f["n_analysts"] >= 5 and f["rec_mean"] is not None and f["rec_mean"] <= 2.1:
         label = "Strong Buy" if f["rec_mean"] <= 1.6 else "Buy"
@@ -950,6 +969,16 @@ def build_thesis(rec):
               f"${v['fair']:.2f} — {arah} {abs(v['upside']) * 100:.1f}% dalam ~12 bulan "
               f"(keyakinan {v['confidence'].lower()}).")
     s += f" Kondisi teknikal {label_score(rec['tech'])} ({rec['tech']:.0f}/100)."
+    g = rec.get("geo")
+    if g:
+        s += f" Risiko geopolitik {g['risk_label'].lower()}"
+        worst = min(g["impact"].items(), key=lambda x: x[1])
+        best = max(g["impact"].items(), key=lambda x: x[1])
+        if worst[1] <= -0.2:
+            s += f", terutama dari tema {geopolitik.THEMES[worst[0]]['name']}"
+        if best[1] >= 0.2:
+            s += f"; berpeluang diuntungkan tema {geopolitik.THEMES[best[0]]['name']}"
+        s += "."
     return s
 
 
@@ -993,7 +1022,7 @@ def main():
     log(f"Menganalisis {len(syms)} saham...")
 
     log("1/4 Mengunduh harga 2 tahun...")
-    prices = fetch_prices(syms + ["SPY"])
+    prices = fetch_prices(syms + ["SPY"] + list(geopolitik.MACRO.values()))
     spy = prices.get("SPY")
     spy_close = spy["Close"] if spy is not None else None
 
@@ -1048,6 +1077,8 @@ def main():
                 "industry": info.get("industry") or "",
                 "mcap": sf(info.get("marketCap")),
                 "summary": (info.get("longBusinessSummary") or "")[:600],
+                "summary_full": info.get("longBusinessSummary") or "",
+                "country": info.get("country") or "",
                 "website": info.get("website") or "",
                 "earnings_ts": info.get("earningsTimestamp"),
                 "f": f, "t": t,
@@ -1073,6 +1104,16 @@ def main():
         rec["tech"] = tech_score(rec["t"], sf(moms.get(rec["sym"])), sf(rss.get(rec["sym"])))
         rec["analyst"] = analyst_score(rec["f"])
         rec["score"] = round(0.70 * rec["fund"] + 0.20 * rec["tech"] + 0.10 * rec["analyst"], 1)
+
+    # ---- geopolitik (berita perusahaan untuk ~180 saham teratas sementara)
+    prelim = sorted(records, key=lambda x: -x["score"])
+    geo_payload = geopolitik.build(records, prices, spy_close, [x["sym"] for x in prelim[:180]],
+                                   workers=args.workers, log=log)
+    geo_int = {t["key"]: t["intensity"] for t in geo_payload["themes"]}
+    for rec in records:
+        rec["geo_int"] = geo_int
+        rec["score"] = round(0.65 * rec["fund"] + 0.20 * rec["tech"] + 0.10 * rec["analyst"]
+                             + 0.05 * rec["geo"]["score"], 1)
 
     for rec in records:
         rec["val"] = fair_value(rec, medians)
@@ -1127,6 +1168,7 @@ def main():
                 "total_return": r(v["total_return"]),
             },
             "pros": rec["pros"], "cons": rec["cons"], "thesis": rec["thesis"], "plan": rec["plan"],
+            "geo": rec["geo"], "country": rec["country"],
             "summary": rec["summary"], "website": rec["website"], "earnings_ts": rec["earnings_ts"],
         })
 
@@ -1161,6 +1203,7 @@ def main():
     now = dt.datetime.now(dt.timezone.utc)
     payload = {
         "generated": now.isoformat(timespec="seconds"),
+        "geo": geo_payload,
         "count": len(stocks),
         "market": market,
         "sectors": sector_out,

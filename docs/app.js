@@ -24,7 +24,7 @@ const App = {
 };
 
 function defaultFilters() {
-  return { q: '', preset: 'all', sectors: [], caps: [], ratings: [], minFund: 0, minUpside: -50, maxPE: 0, minROE: 0, minPio: 0, minDiv: 0, sort: 'score' };
+  return { q: '', preset: 'all', sectors: [], caps: [], ratings: [], minFund: 0, minUpside: -50, maxPE: 0, minROE: 0, minPio: 0, minDiv: 0, minGeo: 0, sort: 'score' };
 }
 
 /* ------------------------------------------------------------ format */
@@ -99,6 +99,8 @@ const PRESETS = [
   { id: 'dividend', name: 'Dividen Kuat', desc: 'Dividen ≥ 2.5%, payout aman, neraca sehat.', f: (s) => (s.m.div_yield ?? 0) >= 0.025 && s.pillars.health >= 50 && (s.m.payout ?? 0) < 0.9, sort: 'div' },
   { id: 'momentum', name: 'Momentum + Fundamental', desc: 'Teknikal ≥ 75 dan fundamental ≥ 62: tren naik yang didukung bisnis bagus.', f: (s) => s.tech >= 75 && s.fund >= 62, sort: 'tech' },
   { id: 'fortress', name: 'Neraca Benteng', desc: 'Kesehatan keuangan ≥ 75 dan Piotroski ≥ 7.', f: (s) => s.pillars.health >= 75 && (s.m.piotroski ?? 0) >= 7, sort: 'fund' },
+  { id: 'geo_safe', name: '🛡️ Tahan Geopolitik', desc: 'Ketahanan geopolitik ≥ 70 dan fundamental ≥ 60 — minim terpapar tarif, konflik & rantai pasok global.', f: (s) => s.geo && s.geo.score >= 70 && s.fund >= 60, sort: 'score' },
+  { id: 'geo_win', name: '🌍 Diuntungkan Geopolitik', desc: 'Peluang geopolitik ≥ 30 (pertahanan, energi, reshoring, keamanan siber, emas) dengan fundamental ≥ 55.', f: (s) => s.geo && s.geo.opp >= 30 && s.fund >= 55, sort: 'geo' },
 ];
 
 const SORTS = {
@@ -113,6 +115,7 @@ const SORTS = {
   div: ['Dividen tertinggi', (s) => s.m.div_yield ?? 0],
   mcap: ['Kapitalisasi pasar', (s) => s.mcap ?? 0],
   chg: ['Perubahan harian', (s) => s.chg1d ?? 0],
+  geo: ['Ketahanan geopolitik', (s) => (s.geo ? s.geo.score : 0)],
 };
 const RATINGS = ['STRONG BUY', 'BUY', 'HOLD', 'HINDARI'];
 const CAPS = { Mega: 'Mega (>$200M)', Large: 'Large ($10–200M)', Mid: 'Mid ($2–10M)', Small: 'Small (<$2M)' };
@@ -163,6 +166,7 @@ function render() {
   } else if (view === 's' && parts[1]) renderDetail(el, decodeURIComponent(parts[1]).toUpperCase());
   else if (view === 'watchlist') renderWatchlist(el);
   else if (view === 'metode') renderMethod(el);
+  else if (view === 'geo') renderGeo(el);
   else renderHome(el);
   currentKey = key;
   const y = App.scroll[key];
@@ -249,6 +253,7 @@ function renderHome(el) {
       <div class="hscroll">${picks.map(pickCard).join('')}</div>
     </section>
 
+    ${geoHomeCard()}
     <section class="section grid-2">${themed}</section>
 
     <section class="section card card-pad">
@@ -285,7 +290,7 @@ function saveFilters() { store.set('filters', App.filters); }
 function activeFilterCount(f) {
   let n = 0;
   if (f.sectors.length) n++; if (f.caps.length) n++; if (f.ratings.length) n++;
-  if (f.minFund > 0) n++; if (f.minUpside > -50) n++; if (f.maxPE > 0) n++; if (f.minROE > 0) n++; if (f.minPio > 0) n++; if (f.minDiv > 0) n++;
+  if (f.minFund > 0) n++; if (f.minUpside > -50) n++; if (f.maxPE > 0) n++; if (f.minROE > 0) n++; if (f.minPio > 0) n++; if (f.minDiv > 0) n++; if (f.minGeo > 0) n++;
   return n;
 }
 function applyFilters() {
@@ -304,6 +309,7 @@ function applyFilters() {
     if (f.minROE > 0 && (s.m.roe == null || s.m.roe * 100 < f.minROE)) return false;
     if (f.minPio > 0 && (s.m.piotroski == null || s.m.piotroski < f.minPio)) return false;
     if (f.minDiv > 0 && ((s.m.div_yield || 0) * 100 < f.minDiv)) return false;
+    if (f.minGeo > 0 && (!s.geo || s.geo.score < f.minGeo)) return false;
     return true;
   });
   const key = (SORTS[f.sort] || SORTS.score)[1];
@@ -368,6 +374,7 @@ function openFilterSheet(onApply) {
     minROE: (v) => (v > 0 ? '≥ ' + v + '%' : 'Semua'),
     minPio: (v) => (v > 0 ? '≥ ' + v + '/9' : 'Semua'),
     minDiv: (v) => (v > 0 ? '≥ ' + v + '%' : 'Semua'),
+    minGeo: (v) => (v > 0 ? '≥ ' + v : 'Semua'),
   };
   openSheet(`<div class="sheet-handle"></div><h3>Filter Lanjutan</h3><p class="small muted" style="margin:0">Kombinasikan dengan preset di atas.</p>
     <div class="fgroup"><label>Rekomendasi</label>${seg('ratings', RATINGS.map((r) => [r, r]), f.ratings)}</div>
@@ -379,6 +386,7 @@ function openFilterSheet(onApply) {
     ${slider('minROE', 'ROE minimum', 0, 50, 5, shows.minROE)}
     ${slider('minPio', 'Piotroski F-Score minimum', 0, 9, 1, shows.minPio)}
     ${slider('minDiv', 'Dividend yield minimum', 0, 6, 0.5, shows.minDiv)}
+    ${slider('minGeo', 'Ketahanan geopolitik minimum', 0, 90, 5, shows.minGeo)}
     <div class="sheet-actions"><button class="btn" id="fReset">Reset</button><button class="btn primary" id="fApply">Terapkan</button></div>`);
   const sh = $('#sheet .sheet');
   $$('[data-seg]', sh).forEach((g) => (g.onclick = (e) => {
@@ -512,9 +520,10 @@ function renderDetail(el, sym) {
     <h3 class="card-title"><span class="ico">🎯</span>Skor Analisis</h3>
     <div class="scores">${ring(s.score, true)}
       <div class="subscores">
-        <div class="subscore"><div class="v" style="color:${scoreColor(s.fund)}">${Math.round(s.fund)}</div><div class="l">Fundamental</div><div class="w">70%</div></div>
+        <div class="subscore"><div class="v" style="color:${scoreColor(s.fund)}">${Math.round(s.fund)}</div><div class="l">Fundamental</div><div class="w">65%</div></div>
         <div class="subscore"><div class="v" style="color:${scoreColor(s.tech)}">${Math.round(s.tech)}</div><div class="l">Teknikal</div><div class="w">20%</div></div>
         <div class="subscore"><div class="v" style="color:${scoreColor(s.analyst)}">${Math.round(s.analyst)}</div><div class="l">Analis</div><div class="w">10%</div></div>
+        ${s.geo ? `<div class="subscore"><div class="v" style="color:${scoreColor(s.geo.score)}">${Math.round(s.geo.score)}</div><div class="l">Geopolitik</div><div class="w">5%</div></div>` : ''}
       </div></div>
     <div class="bars">${pillarRows.map(([k, n, w]) => `<div class="bar-row"><span class="name">${n}<small>${w} dari fundamental</small></span>
       <div class="bar"><i style="width:${s.pillars[k]}%;background:${scoreColor(s.pillars[k])}"></i></div><span class="v">${Math.round(s.pillars[k])}</span></div>`).join('')}</div>
@@ -645,7 +654,7 @@ function renderDetail(el, sym) {
       <button class="btn" id="shareBtn"><svg viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13"/></svg>Bagikan</button>
     </div>
     <div class="detail-grid" style="margin-top:16px">
-      <div class="dcol">${projHtml}${prosHtml}${consHtml}${chartHtml}${metricsHtml}${histHtml}</div>
+      <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}</div>
       <div class="dcol">${scoreHtml}${valHtml}${planHtml}${techHtml}${pioHtml}${aboutHtml}</div>
     </div>
     <p class="disclaimer">Analisis otomatis berbasis data Yahoo Finance; bukan rekomendasi investasi personal. Proyeksi adalah estimasi model dan bisa meleset.</p>
@@ -812,9 +821,10 @@ function renderMethod(el) {
     <h1 class="page-title">Metodologi</h1>
     <p class="page-sub">Bagaimana skor, rekomendasi, dan proyeksi kenaikan dihitung.</p>
     <div class="card"><table class="wtable">
-      <tr><td><b>Fundamental</b> — kualitas, valuasi, pertumbuhan, kesehatan</td><td>70%</td></tr>
+      <tr><td><b>Fundamental</b> — kualitas, valuasi, pertumbuhan, kesehatan</td><td>65%</td></tr>
       <tr><td><b>Teknikal</b> — tren, momentum, RSI, MACD, kekuatan relatif</td><td>20%</td></tr>
       <tr><td><b>Konsensus analis</b> — rekomendasi &amp; target harga</td><td>10%</td></tr>
+      <tr><td><b>Ketahanan geopolitik</b> — eksposur terhadap 10 tema global</td><td>5%</td></tr>
     </table></div>
 
     <h2>1. Skor Fundamental (70%)</h2>
@@ -847,7 +857,13 @@ function renderMethod(el) {
       <tr><td>${ratingBadge('HINDARI')} selain di atas</td><td></td></tr>
     </table></div>
 
-    <h2>5. Data</h2>
+    <h2>5. Analisis Geopolitik</h2>
+    <p><b>Indeks Stres Geopolitik (0–100)</b> dihitung setiap hari dari aset yang biasanya bereaksi duluan terhadap ketegangan global: VIX, emas, minyak WTI (arah &amp; volatilitas), indeks dolar, serta kinerja saham pertahanan, Tiongkok, Taiwan, dan semikonduktor dibanding S&amp;P 500.</p>
+    <p><b>10 tema</b> — perang dagang, kontrol ekspor chip &amp; Taiwan, Timur Tengah &amp; minyak, Rusia–Ukraina &amp; pertahanan, reshoring, perang siber, rantai pasok, dolar &amp; sanksi, mineral kritis, serta regulasi Big Tech. Intensitas tiap tema = 35% bobot struktural + 35% sinyal pasar terkait + 30% frekuensi berita 14 hari terakhir.</p>
+    <p><b>Eksposur saham</b> (-1 dirugikan s.d. +1 diuntungkan) per tema ditentukan dari industri, kata kunci di profil bisnis (mis. menyebut Tiongkok, Taiwan, pertahanan, keamanan siber), negara domisili, dan berita perusahaan. Dampak = eksposur × intensitas. Skor ketahanan = 62 − 0,5 × risiko + 0,4 × peluang − penalti beta tinggi.</p>
+    <p class="small">Keterbatasan: model tidak memakai rincian pendapatan per negara (tidak tersedia gratis), sehingga eksposur adalah perkiraan.</p>
+
+    <h2>6. Data</h2>
     <p>Harga, rasio, dan laporan keuangan tahunan dari Yahoo Finance; universe = seluruh konstituen S&amp;P 500 ditambah saham growth populer. Data diperbarui otomatis setiap hari bursa setelah pasar tutup (bila di-deploy dengan GitHub Actions).</p>
 
     <p class="disclaimer"><b>Penafian:</b> Aplikasi ini adalah alat bantu riset, bukan nasihat investasi. Model kuantitatif memiliki keterbatasan — misalnya laba siklikal di puncak siklus bisa membuat saham tampak murah, dan data pihak ketiga bisa keliru atau terlambat. Kinerja masa lalu tidak menjamin hasil di masa depan. Selalu lakukan riset mandiri.</p>

@@ -98,7 +98,7 @@ svg { display: block; }
 /* ---------------- bottom nav ---------------- */
 .bottomnav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   height: calc(var(--nav-h) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: saturate(1.6) blur(16px); -webkit-backdrop-filter: saturate(1.6) blur(16px);
@@ -300,7 +300,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .conf.c3 i::before, .conf.c3 i::after, .conf.c3 i b, .conf.c2 i::before, .conf.c2 i b, .conf.c1 i::before { background: var(--accent); }
 
 .scores { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; }
-.subscores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.subscores { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 8px; }
 .subscore { background: var(--surface-2); border-radius: 12px; padding: 10px; text-align: center; }
 .subscore .v { font-weight: 800; font-family: var(--mono); font-size: 19px; }
 .subscore .l { font-size: 11px; color: var(--text-2); font-weight: 600; }
@@ -391,3 +391,59 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .fade-in { animation: fadeUp .3s ease both; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------------- geopolitik ---------------- */
+.gauge { width: 100%; max-width: 230px; display: block; margin: 0 auto; }
+.geo-hero { display: grid; gap: 16px; align-items: center; }
+@media (min-width: 760px) { .geo-hero { grid-template-columns: 260px 1fr; } }
+.geo-gauge { text-align: center; }
+.geo-gauge-l { display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 4px; }
+.geo-trend { margin-top: 14px; }
+.geo-spark { width: 100%; height: 44px; margin-top: 4px; }
+.ind-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 560px) { .ind-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1000px) { .ind-grid { grid-template-columns: repeat(4, 1fr); } }
+.ind { padding: 12px 14px; }
+.ind-top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.ind-name { font-weight: 600; }
+.ind-val { font-weight: 700; }
+.ind-note { font-size: 11.5px; color: var(--text-3); margin-top: 6px; line-height: 1.4; }
+.theme-head { display: flex; gap: 12px; align-items: center; }
+.theme-ico { width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; font-size: 20px; flex: none; }
+.theme-name { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+.theme-int { text-align: right; flex: none; }
+.theme-int b { font-size: 22px; display: block; line-height: 1; }
+.theme-int small { font-size: 10.5px; color: var(--text-3); font-weight: 600; white-space: nowrap; }
+.theme-side { display: grid; grid-template-columns: 86px 1fr; gap: 8px; align-items: start; margin-top: 8px; }
+.theme-side .lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding-top: 4px; }
+.chips-wrap { display: flex; flex-wrap: wrap; gap: 5px; }
+.sym-chip { font-family: var(--mono); font-weight: 700; color: var(--text); }
+.sym-chip:hover { border-color: var(--accent); }
+.theme-news { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.theme-news summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); list-style: none; }
+.theme-news summary::-webkit-details-marker { display: none; }
+.theme-news summary::before { content: "▸ "; }
+.theme-news[open] summary::before { content: "▾ "; }
+.news { display: block; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+.news:last-child { border-bottom: 0; }
+.news:hover { background: var(--surface-2); }
+.theme-news .news, .card-pad .news { padding: 9px 0; }
+.news-title { font-weight: 600; font-size: 13.5px; line-height: 1.4; }
+.news-meta { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.news-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.news-tags .tag { font-size: 10.5px; padding: 2px 7px; }
+.geo-head { display: flex; gap: 12px; align-items: center; }
+.geo-rows { display: flex; flex-direction: column; }
+.geo-row { display: grid; grid-template-columns: minmax(0, 1.3fr) 1fr 40px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.geo-row:last-child { border-bottom: 0; }
+.geo-row .name { font-weight: 600; }
+.geo-row .name small { display: block; font-size: 11px; color: var(--text-3); font-weight: 500; }
+.geo-row .v { font-family: var(--mono); font-weight: 700; text-align: right; }
+.dbar { position: relative; height: 10px; border-radius: 6px; background: var(--surface-2); }
+.dbar i { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
+.dbar .mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: var(--border); transform: translateX(-1px); }
+.geo-ev { margin: 6px 0 0; padding-left: 18px; color: var(--text-2); }
+.geo-ev li { margin: 2px 0; }
+.geo-mini { display: block; }
+.geo-mini-g { width: 110px; flex: none; }
+.geo-mini-g .gauge { max-width: 110px; }

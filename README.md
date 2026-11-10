@@ -1,4 +1,4 @@
-# Radar Saham US
+﻿# Radar Saham US
 
 Screener saham Amerika yang mengutamakan fundamental, dilengkapi analisis teknikal. Untuk setiap saham tersedia:
 skor 0–100, rekomendasi (Strong Buy / Buy / Hold / Hindari), **alasan kenapa layak dibeli**, risiko,
@@ -39,10 +39,14 @@ Data diperbarui otomatis Senin–Jumat sekitar pukul 05.30 WIB. Untuk update man
 
 ## Metodologi singkat
 
-- **Skor = 70% fundamental + 20% teknikal + 10% konsensus analis**
+- **Skor = 65% fundamental + 20% teknikal + 10% konsensus analis + 5% ketahanan geopolitik**
 - Fundamental: Kualitas 30% (ROIC, ROE, margin, FCF), Valuasi 28% (P/E fwd, PEG, EV/EBITDA, FCF yield),
   Pertumbuhan 22%, Kesehatan 20% (Piotroski, Altman Z, utang). Tiap metrik dinilai relatif terhadap sektornya dan terhadap ambang absolut.
 - Nilai wajar = DCF free cash flow (35%) + multiple P/E wajar sektor (30%) + target analis (35%).
+- Geopolitik (`scripts/geopolitik.py`): Indeks Stres Geopolitik harian dari VIX, emas, minyak, dolar, dan ETF
+  pertahanan/Tiongkok/Taiwan/chip; intensitas 10 tema (tarif, chip & Taiwan, Timur Tengah, Rusia–Ukraina,
+  reshoring, siber, rantai pasok, dolar & sanksi, mineral kritis, regulasi Big Tech) dari pasar + berita;
+  eksposur tiap saham dari industri, profil bisnis, domisili, dan berita perusahaan.
 
 Detail lengkap ada di halaman **Metodologi** di aplikasi.
 
