@@ -238,3 +238,11 @@ a.icon-btn { color: var(--text); }
 .lr-grid > div { background: var(--surface); padding: 9px 10px; }
 .lr-grid .h { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
 .lr-grid .v { font-weight: 800; font-size: 17px; }
+
+.sel { height: 30px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-size: 12.5px; border-radius: 2px; padding: 0 6px; }
+
+/* cegah konten lebar (blok kode, input) mendorong kartu keluar layar */
+.grid-2 > *, .dcol > * { min-width: 0; }
+pre.code { max-width: 100%; }
+.tog .sel { max-width: 100%; min-width: 0; flex: 1; }
+.alert-form input { width: 100%; min-width: 0; }

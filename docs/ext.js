@@ -73,7 +73,7 @@ function qtrCard(s, order = 10) {
 
 /* ------------------------------------------------------------ 2. sinkronisasi cloud (GitHub Gist) */
 const CLOUD_FILE = 'radar-saham.json';
-const NOTIFY_DEFAULT = { daily: true, intraday: true, move_pct: 5, auto_plan: true };
+const NOTIFY_DEFAULT = { daily: true, intraday: true, move_pct: 5, auto_plan: true, news: true, news_market: true, news_level: 'tinggi' };
 App.cloud = store.get('cloud', null);
 App.alerts = store.get('alerts', {});
 App.notify = Object.assign({}, NOTIFY_DEFAULT, store.get('notify', {}));
@@ -249,7 +249,7 @@ function renderSettings(el) {
 
     <div class="card card-pad">
       <h3 class="card-title">Notifikasi Telegram</h3>
-      <p class="small muted" style="margin-top:0">Ringkasan pagi setelah update data (watchlist, perubahan rekomendasi, laporan keuangan minggu ini) + alert harga intraday tiap 30 menit saat bursa AS buka.</p>
+      <p class="small muted" style="margin-top:0">Ringkasan pagi setelah update data (watchlist, perubahan rekomendasi, laporan keuangan, berita penting 24 jam) + alert harga tiap 30 menit saat bursa AS buka + <b>berita sangat penting</b> dicek tiap 30 menit sepanjang hari.</p>
       <ol class="small steps">
         <li>Di Telegram, chat <a class="link" href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather ↗</a> → <code>/newbot</code> → beri nama → salin <b>token bot</b>.</li>
         <li>Buka bot baru Anda lalu kirim pesan apa saja (mis. "halo").</li>
@@ -264,7 +264,7 @@ GIST_TOKEN        = token GitHub (scope gist) yang sama dengan sinkronisasi</pre
           atau lewat terminal: <pre class="code">gh secret set TELEGRAM_TOKEN -R ${esc(slug)}
 gh secret set TELEGRAM_CHAT_ID -R ${esc(slug)}
 gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
-        <li>Uji: <a class="link" href="https://github.com/${esc(slug)}/actions/workflows/alerts.yml" target="_blank" rel="noopener">Actions → Alert harga intraday → Run workflow ↗</a> dengan mode <code>test</code> atau <code>digest</code>.</li>
+        <li>Uji: <a class="link" href="https://github.com/${esc(slug)}/actions/workflows/alerts.yml" target="_blank" rel="noopener">Actions → Alert harga &amp; berita penting → Run workflow ↗</a> dengan mode <code>test</code> atau <code>digest</code>.</li>
       </ol>
     </div>
     </div>
@@ -276,6 +276,9 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
       <label class="tog"><input type="checkbox" id="nIntra" ${N.intraday ? 'checked' : ''}> Alert harga intraday (tiap 30 menit)</label>
       <label class="tog"><input type="checkbox" id="nAuto" ${N.auto_plan ? 'checked' : ''}> Alert otomatis saat saham watchlist menyentuh target / stop loss model</label>
       <label class="tog">Alert bila saham watchlist bergerak ≥ <input type="number" id="nMove" min="1" max="30" step="0.5" value="${N.move_pct}" style="width:70px"> % dalam sehari</label>
+      <label class="tog"><input type="checkbox" id="nNews" ${N.news ? 'checked' : ''}> Berita sangat penting tentang saham watchlist (akuisisi, investigasi, panduan laba, pergantian CEO, FDA, kebangkrutan…)</label>
+      <label class="tog"><input type="checkbox" id="nNewsMkt" ${N.news_market ? 'checked' : ''}> Berita pasar besar (keputusan The Fed, perang, krisis bank, tarif, pasar anjlok…)</label>
+      <label class="tog">Kepekaan berita <select id="nNewsLvl" class="sel"><option value="tinggi" ${N.news_level !== 'sedang' ? 'selected' : ''}>Hanya yang sangat penting</option><option value="sedang" ${N.news_level === 'sedang' ? 'selected' : ''}>Lebih banyak (termasuk upgrade/downgrade, PHK)</option></select></label>
       <p class="small faint" style="margin:8px 0 0">${c && c.gistId ? 'Disinkronkan ke cloud dan dibaca oleh workflow notifikasi.' : 'Hubungkan sinkronisasi cloud agar preferensi ini dibaca oleh notifikasi.'}</p>
     </div>
     <div class="card card-pad">
@@ -334,12 +337,13 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
   };
   const saveN = () => {
     App.notify = { daily: $('#nDaily').checked, intraday: $('#nIntra').checked, auto_plan: $('#nAuto').checked,
-      move_pct: clamp(parseFloat($('#nMove').value) || 5, 1, 30) };
+      move_pct: clamp(parseFloat($('#nMove').value) || 5, 1, 30), news: $('#nNews').checked,
+      news_market: $('#nNewsMkt').checked, news_level: $('#nNewsLvl').value };
     store.set('notify', App.notify);
     cloudChanged();
     toast('Preferensi disimpan');
   };
-  ['#nDaily', '#nIntra', '#nAuto', '#nMove'].forEach((id) => { $(id).onchange = saveN; });
+  ['#nDaily', '#nIntra', '#nAuto', '#nMove', '#nNews', '#nNewsMkt', '#nNewsLvl'].forEach((id) => { $(id).onchange = saveN; });
   $$('[data-delal]').forEach((b) => { b.onclick = () => { delete App.alerts[b.dataset.delal]; store.set('alerts', App.alerts); cloudChanged(); render(); }; });
   $('#bkCopy').onclick = async () => {
     const code = 'RS1:' + btoa(unescape(encodeURIComponent(JSON.stringify(cloudPayload()))));

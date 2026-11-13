@@ -21,6 +21,8 @@ import time
 
 import requests
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "docs", "data")
 GIST_FILE = "radar-saham.json"
@@ -45,6 +47,49 @@ def pct(x, d=1, sign=True):
         return "–"
     v = x * 100
     return f"{'+' if sign and v > 0 else ''}{v:.{d}f}%"
+
+
+def ago_txt(h):
+    return "baru saja" if h < 1 else f"{h:.0f} jam lalu"
+
+
+def news_lines(items):
+    L = []
+    for n in items:
+        tag = f"<b>{esc(n['sym'])}</b>" if n.get("sym") else "<b>PASAR</b>"
+        icon = "🔴" if n["impact"] < 0 else "🟢" if n["impact"] > 0 else "🟡"
+        L.append(f"{icon} {tag} · {esc(', '.join(n['cats']))} · skor {n['score']}\n"
+                 f"<a href=\"{esc(n['url'] or SITE)}\">{esc(n['title'])}</a>\n"
+                 f"<i>{esc(n['source'])} · {ago_txt(n['age_h'])}</i>")
+    return L
+
+
+def important_news(cfg, state, hours, today):
+    """Berita penting baru (belum pernah dikirim) untuk watchlist + pasar umum."""
+    import berita
+    st = cfg["settings"]
+    if st.get("news") is False:
+        return []
+    level = st.get("news_level", "tinggi")
+    min_stock, min_market = (40, 55) if level == "tinggi" else (30, 45)
+    d = load_json("stocks.json") or {"stocks": []}
+    names = {x["sym"]: x["name"] for x in d["stocks"]}
+    syms = sorted(set(cfg["watchlist"]) | set(cfg["alerts"].keys()))[:40]
+    items = berita.collect(syms, market=st.get("news_market", True), hours=hours,
+                           min_stock=min_stock, min_market=min_market, names=names)
+    sent = state.setdefault("news_sent", {})
+    fresh, used_event = [], set()
+    for n in items:
+        ev = f"{today}:{n['sym'] or 'MKT'}:{n['cats'][0]}"  # satu peristiwa = satu notifikasi per hari
+        if n["key"] in sent or ev in sent or ev in used_event:
+            continue
+        used_event.add(ev)
+        sent[n["key"]] = today
+        sent[ev] = today
+        fresh.append(n)
+    cutoff = (dt.date.today() - dt.timedelta(days=7)).isoformat()
+    state["news_sent"] = {k: v for k, v in sent.items() if v >= cutoff}
+    return fresh[:8]
 
 
 def usd(x):
@@ -235,6 +280,16 @@ def digest():
             L.append("▲ " + ", ".join(f"{esc(x['sym'])}→{esc(x['to'])}" for x in ch["up"][:8]))
         if ch.get("down"):
             L.append("▼ " + ", ".join(f"{esc(x['sym'])}→{esc(x['to'])}" for x in ch["down"][:8]))
+    try:
+        import berita
+        if st.get("news") is not False:
+            names = {x["sym"]: x["name"] for x in d["stocks"]}
+            top = berita.collect(wl[:40], market=st.get("news_market", True), hours=24, names=names)[:6]
+            if top:
+                L.append("\n<b>📰 BERITA PENTING 24 JAM</b>")
+                L.extend(news_lines(top))
+    except Exception as e:  # noqa: BLE001
+        log(f"Berita gagal: {e}")
     L.append(f"\n<a href=\"{SITE}\">Buka Radar Saham</a> · bukan nasihat investasi")
     send("\n".join(L))
     log("Ringkasan terkirim." if TOKEN else "")
@@ -244,25 +299,42 @@ def digest():
 def alerts():
     gid, cfg, state = user_config()
     st = cfg["settings"]
-    if st.get("intraday") is False:
-        log("Alert intraday dimatikan.")
+    if st.get("intraday") is False and st.get("news") is False:
+        log("Alert intraday & berita dimatikan.")
         return
     if not gid:
         log("GIST_TOKEN/gist belum ada — alert intraday butuh gist untuk mencegah pesan berulang.")
         return
+    today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    # ---- berita penting (setiap jadwal, termasuk di luar jam bursa & akhir pekan)
+    try:
+        fresh = important_news(cfg, state, hours=6, today=today)
+        if fresh:
+            send("<b>📰 BERITA PENTING</b>\n\n" + "\n\n".join(news_lines(fresh)))
+            log(f"{len(fresh)} berita penting terkirim.")
+        else:
+            log("Tidak ada berita penting baru.")
+    except Exception as e:  # noqa: BLE001
+        log(f"Berita gagal: {e}")
     syms = sorted(set(cfg["watchlist"]) | set(cfg["alerts"].keys()))
-    if not syms:
-        log("Watchlist kosong.")
+    ny = dt.datetime.now(dt.timezone(dt.timedelta(hours=-5)))
+    mins = ny.hour * 60 + ny.minute
+    market_open = ny.weekday() < 5 and 8 * 60 + 30 <= mins <= 17 * 60  # rentang lebar: aman untuk DST
+    if not syms or not market_open:
+        log("Watchlist kosong." if not syms else "Bursa tutup — cek harga dilewati.")
+        state["last_check"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        gist_write_state(gid, state)
         return
     import yfinance as yf
     df = yf.download(syms, period="5d", interval="15m", auto_adjust=True, group_by="ticker", progress=False,
                      threads=True, prepost=False)
     daily = yf.download(syms, period="10d", interval="1d", auto_adjust=True, group_by="ticker", progress=False)
-    today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     sent = {k: v for k, v in (state.get("sent") or {}).items() if v >= (dt.date.today() - dt.timedelta(days=5)).isoformat()}
     move_th = float(st.get("move_pct") or 5) / 100
     auto = st.get("auto_plan", True)
     msgs = []
+    if st.get("intraday") is False:
+        syms = []
     for sym in syms:
         try:
             sub = df[sym] if len(syms) > 1 else df

@@ -1,9 +1,10 @@
-name: Alert harga intraday
+name: Alert harga & berita penting
 
 on:
   schedule:
-    # tiap 30 menit, Senin-Jumat 13:30-21:00 UTC (jam bursa AS, musim panas & dingin)
-    - cron: "*/30 13-21 * * 1-5"
+    # tiap 30 menit sepanjang hari: berita penting dicek kapan saja,
+    # alert harga hanya dijalankan saat bursa AS buka (diatur di notify.py)
+    - cron: "15,45 * * * *"
   workflow_dispatch:
     inputs:
       mode:

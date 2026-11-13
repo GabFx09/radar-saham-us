@@ -14,6 +14,8 @@ Bisa di-install di HP seperti aplikasi (PWA). Tampilan bergaya terminal keuangan
 | `scripts/geopolitik.py` | Indeks stres geopolitik, 10 tema, eksposur per saham |
 | `scripts/siklus.py` | Siklus pasar ~100 tahun S&P 500: bull/bear, siklus presiden, musiman, mean reversion, FFT |
 | `scripts/makro.py` | Monitor makro: lintas aset, kurva yield & resesi, Fear & Greed, rotasi sektor, revisi estimasi EPS |
+| `scripts/notify.py` | Notifikasi Telegram: ringkasan pagi, alert harga, berita penting |
+| `scripts/berita.py` | Penilai tingkat kepentingan berita (akuisisi, investigasi, The Fed, perang, dll.) |
 | `scripts/quant.py` | Monte Carlo, metrik risiko, profil faktor, model portofolio, rekam jejak |
 | `docs/` | Web app (HTML/CSS/JS murni, tanpa build) |
 | `.github/workflows/update-data.yml` | Update data otomatis setiap hari bursa |
@@ -61,3 +63,10 @@ Data diperbarui otomatis Senin–Jumat sekitar pukul 05.30 WIB. Untuk update man
 Detail lengkap ada di halaman **Metodologi** di aplikasi.
 
 > Bukan nasihat investasi. Proyeksi adalah estimasi model dan bisa meleset.
+
+## Notifikasi Telegram & sinkronisasi cloud
+
+Buka halaman **Pengaturan** di aplikasi (ikon lonceng) untuk panduan lengkap. Singkatnya, simpan tiga secret repo:
+`TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, dan `GIST_TOKEN` (token GitHub ber-scope gist — sama dengan yang dipakai untuk
+sinkronisasi watchlist). Workflow **Alert harga & berita penting** berjalan tiap 30 menit: berita sangat penting
+dicek sepanjang hari, alert harga hanya saat bursa AS buka.
