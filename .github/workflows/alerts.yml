@@ -29,6 +29,7 @@ jobs:
       WATCHLIST: ${{ secrets.WATCHLIST }}
       KABAR_TOKEN: ${{ secrets.KABAR_TOKEN }}
       KABAR_VAPID: ${{ secrets.KABAR_VAPID }}
+      KABAR_KUNCI: ${{ secrets.KABAR_KUNCI }}
     steps:
       - name: Lewati bila Telegram belum diatur
         if: ${{ env.GIST_TOKEN == '' && env.KABAR_TOKEN == '' && (env.TELEGRAM_TOKEN == '' || env.TELEGRAM_CHAT_ID == '') }}

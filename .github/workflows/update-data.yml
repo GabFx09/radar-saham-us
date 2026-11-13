@@ -20,6 +20,7 @@ jobs:
       WATCHLIST: ${{ secrets.WATCHLIST }}
       KABAR_TOKEN: ${{ secrets.KABAR_TOKEN }}
       KABAR_VAPID: ${{ secrets.KABAR_VAPID }}
+      KABAR_KUNCI: ${{ secrets.KABAR_KUNCI }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
