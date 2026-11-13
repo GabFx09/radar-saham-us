@@ -3,7 +3,8 @@
 Screener saham Amerika yang mengutamakan fundamental, dilengkapi analisis teknikal. Untuk setiap saham tersedia:
 skor 0–100, rekomendasi (Strong Buy / Buy / Hold / Hindari), **alasan kenapa layak dibeli**, risiko,
 **proyeksi kenaikan (%)** ke nilai wajar, skenario bear/bull, dan rencana trading.
-Bisa di-install di HP seperti aplikasi (PWA).
+Bisa di-install di HP seperti aplikasi (PWA). Tampilan bergaya terminal keuangan: ketik ticker atau perintah
+(`HELP`, `MAKRO`, `HEAT`, `CMP NVDA AMD`, `SCR STRONG` …) di baris perintah, tekan `/` untuk fokus dan `1`–`9` untuk pindah halaman.
 
 ## Isi folder
 
@@ -12,6 +13,7 @@ Bisa di-install di HP seperti aplikasi (PWA).
 | `scripts/screener.py` | Mesin analisis: unduh data Yahoo Finance → skor → nilai wajar → narasi → `docs/data/` |
 | `scripts/geopolitik.py` | Indeks stres geopolitik, 10 tema, eksposur per saham |
 | `scripts/siklus.py` | Siklus pasar ~100 tahun S&P 500: bull/bear, siklus presiden, musiman, mean reversion, FFT |
+| `scripts/makro.py` | Monitor makro: lintas aset, kurva yield & resesi, Fear & Greed, rotasi sektor, revisi estimasi EPS |
 | `scripts/quant.py` | Monte Carlo, metrik risiko, profil faktor, model portofolio, rekam jejak |
 | `docs/` | Web app (HTML/CSS/JS murni, tanpa build) |
 | `.github/workflows/update-data.yml` | Update data otomatis setiap hari bursa |

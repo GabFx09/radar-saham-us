@@ -158,7 +158,7 @@ function render() {
   const view = parts[0] || 'home';
   const key = parts.join('/');
   const el = $('#app');
-  $$('[data-nav]').forEach((a) => a.classList.toggle('active', (a.dataset.nav === (view === 's' ? '' : view) || (a.closest('.bottomnav') && a.dataset.nav === 'strategi' && (view === 'bandingkan' || view === 'siklus')))));
+  $$('[data-nav]').forEach((a) => a.classList.toggle('active', navActive(a, view)));
   if (view === 'home') renderHome(el);
   else if (view === 'screener') {
     if (query.get('p')) {
@@ -176,8 +176,11 @@ function render() {
   else if (view === 'strategi') renderStrategi(el);
   else if (view === 'bandingkan') renderCompare(el, query);
   else if (view === 'siklus') renderSiklus(el);
+  else if (view === 'makro') renderMakro(el);
+  else if (view === 'heatmap') renderHeatmap(el);
   else renderHome(el);
   updateCmpBar();
+  termAfterRender(view);
   currentKey = key;
   const y = App.scroll[key];
   window.scrollTo(0, view === 's' ? 0 : y || 0);
@@ -256,6 +259,8 @@ function renderHome(el) {
       </div>
     </div>
     ${m ? `<p class="small muted" style="margin:10px 2px 0">${Math.round(m.breadth * 100)}% saham di atas MA200 · SPY ${m.above_sma200 >= 0 ? 'di atas' : 'di bawah'} MA200 (${fmt.pct(m.above_sma200)}) · RSI ${fmt.num(m.rsi, 0)}</p>` : ''}
+
+    ${makroHomeStrip()}
 
     <section class="section">
       <div class="section-head"><div><h2>Pilihan Teratas</h2><p>Lolos semua saringan: fundamental kuat, valuasi menarik, tren mendukung</p></div>
@@ -669,7 +674,7 @@ function renderDetail(el, sym) {
     </div>
     <div class="detail-grid" style="margin-top:16px">
       <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}</div>
-      <div class="dcol">${scoreHtml}${valHtml}${mcCard(s, 6)}${planHtml}${techHtml}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
+      <div class="dcol">${scoreHtml}${valHtml}${estCard(s, 6)}${mcCard(s, 6)}${planHtml}${techHtml}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
     </div>
     <p class="disclaimer">Analisis otomatis berbasis data Yahoo Finance; bukan rekomendasi investasi personal. Proyeksi adalah estimasi model dan bisa meleset.</p>
   </div>`;
@@ -847,7 +852,7 @@ function renderMethod(el) {
     <div class="card"><table class="wtable">
       <tr><td><b>Fundamental</b> — kualitas, valuasi, pertumbuhan, kesehatan</td><td>65%</td></tr>
       <tr><td><b>Teknikal</b> — tren, momentum, RSI, MACD, kekuatan relatif</td><td>20%</td></tr>
-      <tr><td><b>Konsensus analis</b> — rekomendasi &amp; target harga</td><td>10%</td></tr>
+      <tr><td><b>Konsensus analis</b> — rekomendasi, target harga &amp; revisi estimasi EPS</td><td>10%</td></tr>
       <tr><td><b>Ketahanan geopolitik</b> — eksposur terhadap 10 tema global</td><td>5%</td></tr>
     </table></div>
 
@@ -897,7 +902,12 @@ function renderMethod(el) {
     <h2>7. Siklus Pasar 100 Tahun</h2>
     <p>Data harian S&amp;P 500 sejak 1927. Bull/bear market memakai aturan 20% (naik/turun ≥20% dari titik ekstrem). Siklus presiden mengelompokkan return tahunan menurut tahun masa jabatan; musiman memakai return bulanan; mean reversion membandingkan deviasi harga dari tren eksponensial 100 tahun dengan return 10 tahun berikutnya. Analisis spektral (FFT berjendela Hann) diuji terhadap 300 simulasi red noise AR(1) untuk melihat apakah ada siklus berperiode tetap yang signifikan.</p>
 
-    <h2>8. Data</h2>
+    <h2>8. Revisi Estimasi &amp; Monitor Makro</h2>
+    <p><b>Revisi estimasi</b> — untuk ±230 saham teratas, perubahan estimasi EPS tahun ini &amp; tahun depan dalam 7/30/90 hari, jumlah revisi naik vs turun, dan kejutan laba 4 kuartal. Skor revisi (55% revisi 90 hari, 20% rasio naik/turun, 25% kejutan laba) menyumbang 40% skor analis.</p>
+    <p><b>Fear &amp; Greed Radar</b> — rata-rata 7 komponen yang masing-masing dinilai sebagai persentil 1 tahun: momentum S&amp;P 500 vs MA125, saham di dekat puncak vs dasar 52 minggu, % saham di atas MA50, VIX vs MA50 (dibalik), saham vs Treasury 20 hari, obligasi high-yield vs Treasury, saham vs emas.</p>
+    <p><b>Kurva yield</b> — spread Treasury 10 tahun dikurangi T-bill 3 bulan sejak 1962, dibandingkan dengan tanggal resesi NBER. <b>Rotasi sektor</b> — Relative Rotation Graph: kekuatan relatif ETF sektor terhadap S&amp;P 500 (vs rata-rata 26 minggu) dan momentumnya (perubahan 4 minggu).</p>
+
+    <h2>9. Data</h2>
     <p>Harga, rasio, dan laporan keuangan tahunan dari Yahoo Finance; universe = seluruh konstituen S&amp;P 500 ditambah saham growth populer. Data diperbarui otomatis setiap hari bursa setelah pasar tutup (bila di-deploy dengan GitHub Actions).</p>
 
     <p class="disclaimer"><b>Penafian:</b> Aplikasi ini adalah alat bantu riset, bukan nasihat investasi. Model kuantitatif memiliki keterbatasan — misalnya laba siklikal di puncak siklus bisa membuat saham tampak murah, dan data pihak ketiga bisa keliru atau terlambat. Kinerja masa lalu tidak menjamin hasil di masa depan. Selalu lakukan riset mandiri.</p>

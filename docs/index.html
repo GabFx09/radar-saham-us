@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Radar Saham US</title>
   <meta name="description" content="Screener saham Amerika berbasis fundamental + teknikal: skor, alasan beli, dan proyeksi kenaikan.">
-  <meta name="theme-color" content="#0a0f1e" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#f5f7fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,35 +16,26 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="terminal.css">
   <script>
-    try { var t = localStorage.getItem('theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    try { var t = localStorage.getItem('theme') || 'dark'; if (t) document.documentElement.setAttribute('data-theme', t); } catch (e) {}
   </script>
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
       <a href="#/" class="brand" aria-label="Beranda">
-        <svg viewBox="0 0 32 32" class="brand-logo" aria-hidden="true">
-          <defs><linearGradient id="lg" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs>
-          <rect width="32" height="32" rx="9" fill="url(#lg)"/>
-          <path d="M7 21l6-6 4 4 8-9" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="25" cy="10" r="2.2" fill="#fff"/>
-        </svg>
-        <span>Radar<b>Saham</b><small>US</small></span>
+        <span class="brand-mark">RS</span>
+        <span class="brand-txt"><b>RADAR SAHAM</b><small>US EQUITY TERMINAL</small></span>
       </a>
-      <nav class="topnav" aria-label="Navigasi utama">
-        <a href="#/" data-nav="home">Beranda</a>
-        <a href="#/screener" data-nav="screener">Screener</a>
-        <a href="#/watchlist" data-nav="watchlist">Watchlist</a>
-        <a href="#/strategi" data-nav="strategi">Strategi</a>
-        <a href="#/siklus" data-nav="siklus">Siklus</a>
-        <a href="#/geo" data-nav="geo">Geopolitik</a>
-        <a href="#/metode" data-nav="metode">Metodologi</a>
-      </nav>
+      <button class="cmdline" id="cmdBtn" aria-label="Buka baris perintah">
+        <span class="pr">&gt;</span><span class="ph">Ticker atau perintah… <span class="cur"></span></span><span class="go">&lt;GO&gt;</span>
+      </button>
+      <div class="clock" id="clock" aria-live="off"></div>
       <div class="top-actions">
-        <button class="icon-btn" id="btnSearch" aria-label="Cari saham">
+        <button class="icon-btn hidden" id="btnSearch" aria-label="Cari saham">
           <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
         </button>
         <button class="icon-btn hidden" id="btnInstall" aria-label="Install aplikasi">
@@ -55,7 +46,20 @@
         </button>
       </div>
     </div>
+    <div class="tape" aria-label="Ticker pasar"><div class="tape-in" id="tape"></div></div>
+    <nav class="fkeys" aria-label="Navigasi utama"><div class="fkeys-in">
+      <a href="#/" data-nav="home"><kbd>1</kbd>BERANDA</a>
+      <a href="#/screener" data-nav="screener"><kbd>2</kbd>SCREENER</a>
+      <a href="#/makro" data-nav="makro"><kbd>3</kbd>MAKRO</a>
+      <a href="#/heatmap" data-nav="heatmap"><kbd>4</kbd>HEATMAP</a>
+      <a href="#/siklus" data-nav="siklus"><kbd>5</kbd>SIKLUS</a>
+      <a href="#/geo" data-nav="geo"><kbd>6</kbd>GEO</a>
+      <a href="#/strategi" data-nav="strategi"><kbd>7</kbd>STRATEGI</a>
+      <a href="#/watchlist" data-nav="watchlist"><kbd>8</kbd>WATCHLIST</a>
+      <a href="#/metode" data-nav="metode"><kbd>9</kbd>METODE</a>
+    </div></nav>
   </header>
+  <div id="subnav" class="container" style="padding-top:0;padding-bottom:0"></div>
 
   <main id="app" class="container" tabindex="-1">
     <div class="splash">
@@ -71,14 +75,14 @@
     <a href="#/screener" data-nav="screener">
       <svg viewBox="0 0 24 24"><path d="M4 5h16l-6 8v6l-4-2v-4z"/></svg><span>Screener</span>
     </a>
-    <a href="#/watchlist" data-nav="watchlist">
-      <svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg><span>Watchlist</span>
-    </a>
-    <a href="#/geo" data-nav="geo">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg><span>Geopolitik</span>
+    <a href="#/makro" data-nav="makro">
+      <svg viewBox="0 0 24 24"><path d="M3 20h18M6 16l4-6 4 3 5-8"/></svg><span>Pasar</span>
     </a>
     <a href="#/strategi" data-nav="strategi">
       <svg viewBox="0 0 24 24"><path d="M12 3v9h9"/><path d="M20.5 15.5A9 9 0 1 1 8.5 3.7"/></svg><span>Strategi</span>
+    </a>
+    <a href="#/watchlist" data-nav="watchlist">
+      <svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg><span>Watchlist</span>
     </a>
   </nav>
 
@@ -104,5 +108,7 @@
   <script src="geo.js"></script>
   <script src="quant.js"></script>
   <script src="siklus.js"></script>
+  <script src="term.js"></script>
+  <script src="makro.js"></script>
 </body>
 </html>

@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import geopolitik  # noqa: E402
 import quant  # noqa: E402
 import siklus  # noqa: E402
+import makro  # noqa: E402
 import zlib  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -220,6 +221,28 @@ def fetch_prices(symbols):
             except Exception:
                 pass
         log(f"  harga: {min(i + chunk, len(symbols))}/{len(symbols)}")
+    # ulangi simbol yang gagal (timeout jaringan) dalam kelompok kecil
+    for rnd in (1, 2):
+        missing = [s for s in symbols if s not in out]
+        if not missing:
+            break
+        log(f"  ulang unduh harga {len(missing)} simbol (putaran {rnd})...")
+        time.sleep(5 * rnd)
+        for i in range(0, len(missing), 25):
+            part = missing[i : i + 25]
+            try:
+                df = yf.download(part, period="2y", interval="1d", auto_adjust=True,
+                                 group_by="ticker", threads=True, progress=False)
+            except Exception:
+                continue
+            for s in part:
+                try:
+                    sub = df[s] if isinstance(df.columns, pd.MultiIndex) else df
+                    sub = sub.dropna(subset=["Close"])
+                    if len(sub) > 60:
+                        out[s] = sub
+                except Exception:
+                    pass
     return out
 
 
@@ -935,6 +958,23 @@ def build_reasons(rec, medians):
         C(60, f"Payout ratio {pct(f['payout'])} — dividen melebihi laba, keberlanjutan perlu dicermati.",
           "Pemegang Saham")
 
+    e = rec.get("est")
+    if e:
+        r90 = [e[k]["r90"] for k in ("fy0", "fy1") if e.get(k) and e[k].get("r90") is not None]
+        avg90 = sum(r90) / len(r90) if r90 else None
+        if avg90 is not None and avg90 >= 0.04:
+            P(55 + min(avg90, 0.3) * 120, f"Analis menaikkan estimasi EPS rata-rata {pct(avg90)} dalam 90 hari terakhir"
+              + (f" ({e['up30']} revisi naik vs {e['down30']} turun dalam 30 hari)." if e.get("up30") is not None else "."),
+              "Revisi Estimasi")
+        elif avg90 is not None and avg90 <= -0.04:
+            C(55 + min(-avg90, 0.3) * 120, f"Analis memangkas estimasi EPS rata-rata {pct(-avg90)} dalam 90 hari terakhir"
+              + (f" ({e['down30']} revisi turun vs {e['up30']} naik dalam 30 hari)." if e.get("up30") is not None else "."),
+              "Revisi Estimasi")
+        if e.get("n_q", 0) >= 4 and e.get("beats") == 4 and (e.get("avg_surprise") or 0) > 0.03:
+            P(52, f"Laba mengalahkan estimasi 4 kuartal berturut-turut (rata-rata kejutan {pct(e['avg_surprise'])}).",
+              "Kejutan Laba")
+        elif e.get("n_q", 0) >= 4 and e.get("beats", 4) <= 1:
+            C(50, f"Laba di bawah estimasi pada {e['n_q'] - e['beats']} dari {e['n_q']} kuartal terakhir.", "Kejutan Laba")
     mc = rec.get("mc")
     if mc:
         if mc["p_up"] >= 0.62:
@@ -1042,7 +1082,7 @@ def main():
     log(f"Menganalisis {len(syms)} saham...")
 
     log("1/4 Mengunduh harga 2 tahun...")
-    prices = fetch_prices(syms + ["SPY"] + list(geopolitik.MACRO.values()))
+    prices = fetch_prices(list(dict.fromkeys(syms + ["SPY"] + list(geopolitik.MACRO.values()) + makro.all_symbols())))
     spy = prices.get("SPY")
     spy_close = spy["Close"] if spy is not None else None
 
@@ -1125,8 +1165,23 @@ def main():
         rec["analyst"] = analyst_score(rec["f"])
         rec["score"] = round(0.70 * rec["fund"] + 0.20 * rec["tech"] + 0.10 * rec["analyst"], 1)
 
-    # ---- geopolitik (berita perusahaan untuk ~180 saham teratas sementara)
+    # ---- revisi estimasi EPS & kejutan laba (saham teratas sementara, hemat panggilan API)
     prelim = sorted(records, key=lambda x: -x["score"])
+    est_syms = [x["sym"] for x in prelim[: (len(prelim) if args.tickers else 230)]]
+    log(f"  Mengunduh revisi estimasi analis untuk {len(est_syms)} saham...")
+    ests = {}
+    with ThreadPoolExecutor(max_workers=min(args.workers, 6)) as ex:
+        for sym_, e in ex.map(makro.fetch_estimates, est_syms):
+            if e:
+                ests[sym_] = e
+    log(f"  estimasi: {len(ests)}/{len(est_syms)}")
+    for rec in records:
+        rec["est"] = ests.get(rec["sym"])
+        rec["rev"] = makro.revision_score(rec["est"])
+        if rec["rev"] is not None:
+            rec["analyst"] = round(0.6 * rec["analyst"] + 0.4 * rec["rev"], 1)
+
+    # ---- geopolitik (berita perusahaan untuk ~180 saham teratas sementara)
     geo_payload = geopolitik.build(records, prices, spy_close, [x["sym"] for x in prelim[:180]],
                                    workers=args.workers, log=log)
     geo_int = {t["key"]: t["intensity"] for t in geo_payload["themes"]}
@@ -1215,6 +1270,7 @@ def main():
             "pros": rec["pros"], "cons": rec["cons"], "thesis": rec["thesis"], "plan": rec["plan"],
             "geo": rec["geo"], "country": rec["country"],
             "factors": rec.get("factors"),
+            "est": rec.get("est"), "rev": rec.get("rev"),
             "q": None if not rec.get("q_risk") else {
                 **{k: r(x, 4) for k, x in rec["q_risk"].items()},
                 "mc": None if not rec.get("mc") else {
@@ -1279,6 +1335,18 @@ def main():
         except Exception as e:
             log(f"  rekam jejak gagal: {e}")
     if not args.tickers:
+        try:
+            mk = makro.build(prices, {rc["sym"]: prices[rc["sym"]]["Close"].astype(float) for rc in records}, log=log)
+            mk["generated"] = now.isoformat(timespec="seconds")
+            mk_path = os.path.join(OUT_DIR, "makro.json")
+            complete = mk.get("fg") and mk.get("rotation") and (mk.get("curve") or {}).get("spread_now") is not None
+            if complete or not os.path.exists(mk_path):
+                with open(mk_path, "w", encoding="utf-8") as fh:
+                    json.dump(mk, fh, ensure_ascii=False, separators=(",", ":"))
+            else:
+                log("  makro: data tidak lengkap — makro.json lama dipertahankan")
+        except Exception as e:
+            log(f"  monitor makro gagal: {e}")
         try:
             cyc = siklus.build(log=log)
             with open(os.path.join(OUT_DIR, "cycles.json"), "w", encoding="utf-8") as fh:
