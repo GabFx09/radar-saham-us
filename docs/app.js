@@ -100,6 +100,9 @@ const PRESETS = [
   { id: 'momentum', name: 'Momentum + Fundamental', desc: 'Teknikal ≥ 75 dan fundamental ≥ 62: tren naik yang didukung bisnis bagus.', f: (s) => s.tech >= 75 && s.fund >= 62, sort: 'tech' },
   { id: 'fortress', name: 'Neraca Benteng', desc: 'Kesehatan keuangan ≥ 75 dan Piotroski ≥ 7.', f: (s) => s.pillars.health >= 75 && (s.m.piotroski ?? 0) >= 7, sort: 'fund' },
   { id: 'geo_safe', name: '🛡️ Tahan Geopolitik', desc: 'Ketahanan geopolitik ≥ 70 dan fundamental ≥ 60 — minim terpapar tarif, konflik & rantai pasok global.', f: (s) => s.geo && s.geo.score >= 70 && s.fund >= 60, sort: 'score' },
+  { id: 'prob', name: '🎲 Peluang Tinggi', desc: 'Simulasi Monte Carlo: peluang untung ≥ 60%, risiko turun >20% ≤ 20%, fundamental ≥ 60.', f: (s) => s.q && s.q.mc && s.q.mc.p_up >= 0.6 && s.q.mc.p_loss20 <= 0.2 && s.fund >= 60, sort: 'prob' },
+  { id: 'lowvol', name: '🧘 Stabil & Berkualitas', desc: 'Volatilitas rendah (persentil ≥ 70), kualitas ≥ 60, rekomendasi Buy/Strong Buy.', f: (s) => s.factors && s.factors.lowvol >= 70 && s.pillars.quality >= 60 && (s.rating === 'BUY' || s.rating === 'STRONG BUY'), sort: 'score' },
+  { id: 'upgrade', name: '▲ Baru Naik Peringkat', desc: 'Saham yang rekomendasinya naik sejak update sebelumnya.', f: (s) => s.prev && ratingOrder[s.rating] > ratingOrder[s.prev.rating], sort: 'score' },
   { id: 'geo_win', name: '🌍 Diuntungkan Geopolitik', desc: 'Peluang geopolitik ≥ 30 (pertahanan, energi, reshoring, keamanan siber, emas) dengan fundamental ≥ 55.', f: (s) => s.geo && s.geo.opp >= 30 && s.fund >= 55, sort: 'geo' },
 ];
 
@@ -116,6 +119,9 @@ const SORTS = {
   mcap: ['Kapitalisasi pasar', (s) => s.mcap ?? 0],
   chg: ['Perubahan harian', (s) => s.chg1d ?? 0],
   geo: ['Ketahanan geopolitik', (s) => (s.geo ? s.geo.score : 0)],
+  prob: ['Peluang untung (simulasi)', (s) => (s.q && s.q.mc ? s.q.mc.p_up : 0)],
+  sharpe: ['Sharpe 1 tahun', (s) => (s.q && s.q.sharpe != null ? s.q.sharpe : -9)],
+  lowvol: ['Volatilitas terendah', (s) => (s.q && s.q.vol != null ? -s.q.vol : -9)],
 };
 const RATINGS = ['STRONG BUY', 'BUY', 'HOLD', 'HINDARI'];
 const CAPS = { Mega: 'Mega (>$200M)', Large: 'Large ($10–200M)', Mid: 'Mid ($2–10M)', Small: 'Small (<$2M)' };
@@ -152,7 +158,7 @@ function render() {
   const view = parts[0] || 'home';
   const key = parts.join('/');
   const el = $('#app');
-  $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === (view === 's' ? '' : view)));
+  $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === (view === 's' ? '' : view === 'bandingkan' ? 'strategi' : view)));
   if (view === 'home') renderHome(el);
   else if (view === 'screener') {
     if (query.get('p')) {
@@ -167,7 +173,10 @@ function render() {
   else if (view === 'watchlist') renderWatchlist(el);
   else if (view === 'metode') renderMethod(el);
   else if (view === 'geo') renderGeo(el);
+  else if (view === 'strategi') renderStrategi(el);
+  else if (view === 'bandingkan') renderCompare(el, query);
   else renderHome(el);
+  updateCmpBar();
   currentKey = key;
   const y = App.scroll[key];
   window.scrollTo(0, view === 's' ? 0 : y || 0);
@@ -253,6 +262,7 @@ function renderHome(el) {
       <div class="hscroll">${picks.map(pickCard).join('')}</div>
     </section>
 
+    ${strategiHomeCard()}
     ${geoHomeCard()}
     <section class="section grid-2">${themed}</section>
 
@@ -265,6 +275,7 @@ function renderHome(el) {
         <span class="v ${cls(x.upside)}" style="font-size:12px">${fmt.pct(x.upside, 0)}</span></div>`).join('')}
     </section>
 
+    <p class="small" style="text-align:center;margin-top:20px"><a class="link" href="#/metode">Metodologi lengkap ›</a></p>
     <p class="disclaimer">Bukan ajakan membeli/menjual. Proyeksi berasal dari model kuantitatif & konsensus analis, bisa meleset. Lakukan riset sendiri dan sesuaikan dengan profil risiko Anda.</p>
   </div>`;
 }
@@ -644,18 +655,19 @@ function renderDetail(el, sym) {
   el.innerHTML = `<div class="fade-in">
     <button class="back" onclick="history.length > 1 ? history.back() : (location.hash = '#/')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Kembali</button>
     <div class="d-head">
-      <div style="min-width:0"><div class="d-sym">${esc(s.sym)} ${ratingBadge(s.rating)}</div>
+      <div style="min-width:0"><div class="d-sym">${esc(s.sym)} ${ratingBadge(s.rating)} ${changeTag(s)}</div>
         <div class="d-name">${esc(s.name)}</div>
         <div class="d-tags"><span class="tag">${esc(s.sector)}</span><span class="tag">${esc(s.industry)}</span><span class="tag">${esc(s.cap)} cap</span></div></div>
       <div class="d-price"><div class="p">${fmt.usd(s.price)}</div><div class="${cls(s.chg1d)} mono" style="font-weight:700">${fmt.pct(s.chg1d, 2)}</div></div>
     </div>
     <div class="d-actions">
       <button class="btn star-btn ${inWatch ? 'on' : ''}" id="starBtn"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>${inWatch ? 'Di watchlist' : 'Watchlist'}</button>
+      <button class="btn ${App.cmp.includes(s.sym) ? 'on' : ''}" id="cmpBtn"><svg viewBox="0 0 24 24"><path d="M12 3v18M5 7h14M5 7l-3 7a3 3 0 006 0zM19 7l-3 7a3 3 0 006 0z"/></svg><span>${App.cmp.includes(s.sym) ? 'Dibandingkan' : 'Bandingkan'}</span></button>
       <button class="btn" id="shareBtn"><svg viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13"/></svg>Bagikan</button>
     </div>
     <div class="detail-grid" style="margin-top:16px">
       <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}</div>
-      <div class="dcol">${scoreHtml}${valHtml}${planHtml}${techHtml}${pioHtml}${aboutHtml}</div>
+      <div class="dcol">${scoreHtml}${valHtml}${mcCard(s, 6)}${planHtml}${techHtml}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
     </div>
     <p class="disclaimer">Analisis otomatis berbasis data Yahoo Finance; bukan rekomendasi investasi personal. Proyeksi adalah estimasi model dan bisa meleset.</p>
   </div>`;
@@ -665,6 +677,12 @@ function renderDetail(el, sym) {
     const on = App.watch.has(s.sym);
     $('#starBtn').classList.toggle('on', on);
     $('#starBtn').lastChild.textContent = on ? 'Di watchlist' : 'Watchlist';
+  };
+  $('#cmpBtn').onclick = () => {
+    toggleCmp(s.sym);
+    const on = App.cmp.includes(s.sym);
+    $('#cmpBtn').classList.toggle('on', on);
+    $('#cmpBtn span').textContent = on ? 'Dibandingkan' : 'Bandingkan';
   };
   $('#shareBtn').onclick = async () => {
     const text = `${s.sym} — ${s.rating}, skor ${Math.round(s.score)}/100, proyeksi ${fmt.pct(up)} ke ${fmt.usd(v?.fair)}`;
@@ -806,6 +824,10 @@ function renderWatchlist(el) {
   el.innerHTML = `<div class="fade-in">
     <h1 class="page-title">Watchlist</h1>
     <p class="page-sub">Saham pantauan Anda — tersimpan di perangkat ini.</p>
+    ${(() => { const ch = list.filter((s) => s.prev && s.prev.rating !== s.rating); return ch.length ? `<div class="card card-pad" style="margin-bottom:14px;border-color:var(--accent)">
+      <div class="mk-label">🔔 Perubahan rekomendasi sejak ${fmt.date(ch[0].prev.d, { day: 'numeric', month: 'short' })}</div>
+      ${ch.map((s) => `<a class="chg-row" href="#/s/${encodeURIComponent(s.sym)}"><b>${esc(s.sym)}</b><span class="small muted chg-name">${esc(s.name)}</span><span class="chg-flow">${ratingBadge(s.prev.rating)}<span class="faint">→</span>${ratingBadge(s.rating)}</span></a>`).join('')}</div>` : ''; })()}
+    ${list.length >= 2 ? `<div style="display:flex;gap:8px;margin-bottom:14px"><a class="btn" href="#/bandingkan?s=${list.slice(0, 4).map((s) => s.sym).join(',')}">⚖️ Bandingkan ${Math.min(4, list.length)} teratas</a></div>` : ''}
     ${list.length ? `<div class="mk-stats" style="margin-bottom:14px">
       <div class="card stat"><div class="v">${list.length}</div><div class="l">Saham</div></div>
       <div class="card stat"><div class="v" style="color:${scoreColor(list.reduce((a, s) => a + s.score, 0) / list.length)}">${Math.round(list.reduce((a, s) => a + s.score, 0) / list.length)}</div><div class="l">Rata-rata skor</div></div>
@@ -827,7 +849,7 @@ function renderMethod(el) {
       <tr><td><b>Ketahanan geopolitik</b> — eksposur terhadap 10 tema global</td><td>5%</td></tr>
     </table></div>
 
-    <h2>1. Skor Fundamental (70%)</h2>
+    <h2>1. Skor Fundamental (65%)</h2>
     <p>Setiap metrik diberi nilai 0–100 dengan menggabungkan dua sudut pandang: <b>persentil terhadap emiten sesektor</b> (50%) — supaya bank tidak dibandingkan dengan perusahaan software — dan <b>ambang absolut</b> (50%) — supaya saham "terbaik di sektor yang jelek" tidak otomatis dapat nilai tinggi.</p>
     <div class="card"><table class="wtable">
       <tr><td><b>Kualitas &amp; Profitabilitas</b><br><span class="small">ROIC, ROE, ROA, gross/operating/FCF margin, tren margin, shareholder yield</span></td><td>30%</td></tr>
@@ -863,7 +885,14 @@ function renderMethod(el) {
     <p><b>Eksposur saham</b> (-1 dirugikan s.d. +1 diuntungkan) per tema ditentukan dari industri, kata kunci di profil bisnis (mis. menyebut Tiongkok, Taiwan, pertahanan, keamanan siber), negara domisili, dan berita perusahaan. Dampak = eksposur × intensitas. Skor ketahanan = 62 − 0,5 × risiko + 0,4 × peluang − penalti beta tinggi.</p>
     <p class="small">Keterbatasan: model tidak memakai rincian pendapatan per negara (tidak tersedia gratis), sehingga eksposur adalah perkiraan.</p>
 
-    <h2>6. Data</h2>
+    <h2>6. Analisis Kuantitatif</h2>
+    <p><b>Simulasi Monte Carlo</b> — 3.000 jalur harga harian selama 12 bulan. Guncangan harian diambil acak (bootstrap) dari return historis 2 tahun saham itu sendiri sehingga ekor gemuk &amp; lonjakan ekstrem tetap terwakili; volatilitas = rata-rata volatilitas 1 tahun dan volatilitas EWMA terkini (λ 0,94). Hasilnya: peluang untung, peluang mencapai nilai wajar, risiko turun &gt;20%, rentang 90%, CVaR, serta peluang target tersentuh sebelum stop loss (dihitung per jalur).</p>
+    <p><b>Return harapan</b> memadukan pandangan model nilai wajar dengan return ekuilibrium CAPM (4,3% + beta × 5%), mirip pendekatan Black–Litterman: bobot pandangan model 50% bila keyakinan tinggi, 38% sedang, 22% rendah. Tujuannya agar proyeksi tidak terlalu optimistis.</p>
+    <p><b>Profil faktor</b> — persentil Valuasi, Kualitas, Pertumbuhan, Momentum (12-1 bulan), Stabil (volatilitas rendah), dan Ukuran terhadap seluruh universe. Metrik risiko: volatilitas, max drawdown, Sharpe, Sortino, beta terhadap S&amp;P 500 (dari return harian 1 tahun), dan VaR harian 95%.</p>
+    <p><b>Model portofolio</b> — optimasi mean-variance (maksimalkan return harapan − λ/2 × varians) atas saham Buy/Strong Buy dengan batas bobot per saham &amp; per sektor. Matriks kovarians dari return harian 1 tahun dengan <i>shrinkage</i> 50% ke korelasi konstan agar stabil. Tiga profil: Konservatif (λ 9, maks. 8%/saham), Seimbang (λ 4, 10%), Agresif (λ 1,6, 14%).</p>
+    <p><b>Rekam jejak</b> — setiap update menyimpan daftar Strong Buy, Buy, dan Hindari beserta harganya. Kinerjanya dilacak terhadap S&amp;P 500 apa adanya, tanpa dipilih-pilih, supaya Anda bisa menilai seberapa andal model ini dari waktu ke waktu.</p>
+
+    <h2>7. Data</h2>
     <p>Harga, rasio, dan laporan keuangan tahunan dari Yahoo Finance; universe = seluruh konstituen S&amp;P 500 ditambah saham growth populer. Data diperbarui otomatis setiap hari bursa setelah pasar tutup (bila di-deploy dengan GitHub Actions).</p>
 
     <p class="disclaimer"><b>Penafian:</b> Aplikasi ini adalah alat bantu riset, bukan nasihat investasi. Model kuantitatif memiliki keterbatasan — misalnya laba siklikal di puncak siklus bisa membuat saham tampak murah, dan data pihak ketiga bisa keliru atau terlambat. Kinerja masa lalu tidak menjamin hasil di masa depan. Selalu lakukan riset mandiri.</p>
@@ -938,6 +967,8 @@ window.addEventListener('hashchange', render);
 (async function boot() {
   try {
     await loadData();
+    // tunggu semua skrip modul (geo.js, quant.js) selesai dimuat
+    if (document.readyState === 'loading') await new Promise((r) => document.addEventListener('DOMContentLoaded', r, { once: true }));
     render();
   } catch (e) {
     $('#app').innerHTML = `<div class="empty"><div class="big-ico">📡</div><b>Gagal memuat data</b><p class="small">${esc(e.message)}</p>

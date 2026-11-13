@@ -1,8 +1,8 @@
 /* Service worker: app shell cache-first, data network-first (fallback cache saat offline) */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = `shell-${VERSION}`;
 const DATA = 'data-v1';
-const ASSETS = ['./', 'index.html', 'app.css', 'app.js', 'geo.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
+const ASSETS = ['./', 'index.html', 'app.css', 'app.js', 'geo.js', 'quant.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

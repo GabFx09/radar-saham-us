@@ -10,6 +10,8 @@ Bisa di-install di HP seperti aplikasi (PWA).
 | Path | Fungsi |
 |---|---|
 | `scripts/screener.py` | Mesin analisis: unduh data Yahoo Finance → skor → nilai wajar → narasi → `docs/data/` |
+| `scripts/geopolitik.py` | Indeks stres geopolitik, 10 tema, eksposur per saham |
+| `scripts/quant.py` | Monte Carlo, metrik risiko, profil faktor, model portofolio, rekam jejak |
 | `docs/` | Web app (HTML/CSS/JS murni, tanpa build) |
 | `.github/workflows/update-data.yml` | Update data otomatis setiap hari bursa |
 
@@ -47,6 +49,11 @@ Data diperbarui otomatis Senin–Jumat sekitar pukul 05.30 WIB. Untuk update man
   pertahanan/Tiongkok/Taiwan/chip; intensitas 10 tema (tarif, chip & Taiwan, Timur Tengah, Rusia–Ukraina,
   reshoring, siber, rantai pasok, dolar & sanksi, mineral kritis, regulasi Big Tech) dari pasar + berita;
   eksposur tiap saham dari industri, profil bisnis, domisili, dan berita perusahaan.
+
+- Kuantitatif (`scripts/quant.py`): simulasi Monte Carlo 3.000 jalur per saham (bootstrap return historis,
+  volatilitas EWMA, return harapan = pandangan model + CAPM ala Black–Litterman); volatilitas, max drawdown,
+  Sharpe/Sortino, beta, VaR; profil faktor; model portofolio mean-variance (konservatif/seimbang/agresif) dengan
+  kovarians shrinkage + backtest; rekam jejak harian rekomendasi vs S&P 500 (`docs/data/track.json`).
 
 Detail lengkap ada di halaman **Metodologi** di aplikasi.
 

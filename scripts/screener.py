@@ -33,6 +33,8 @@ import yfinance as yf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import geopolitik  # noqa: E402
+import quant  # noqa: E402
+import zlib  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "docs", "data")
@@ -932,6 +934,23 @@ def build_reasons(rec, medians):
         C(60, f"Payout ratio {pct(f['payout'])} — dividen melebihi laba, keberlanjutan perlu dicermati.",
           "Pemegang Saham")
 
+    mc = rec.get("mc")
+    if mc:
+        if mc["p_up"] >= 0.62:
+            P(50 + (mc["p_up"] - 0.62) * 150,
+              f"Simulasi Monte Carlo {quant.MC_PATHS:,} skenario: peluang untung dalam 12 bulan "
+              f"{pct(mc['p_up'])}, rentang hasil 90% {pct(mc['p5'])} s.d. {pct(mc['p95'])}.", "Probabilitas")
+        if mc.get("p_target_first") and mc["p_target_first"] >= 0.5:
+            P(50, f"{pct(mc['p_target_first'])} skenario simulasi menyentuh target nilai wajar lebih dulu "
+                  f"sebelum stop loss.", "Probabilitas")
+        if mc["p_loss20"] >= 0.32:
+            C(42 + mc["p_loss20"] * 50, f"Simulasi: {pct(mc['p_loss20'])} kemungkinan harga turun >20% dalam "
+                                         f"12 bulan (volatilitas {pct(mc['sigma'])}/thn).", "Probabilitas")
+    qr = rec.get("q_risk")
+    if qr and qr["mdd"] <= -0.40:
+        C(48, f"Pernah turun {pct(-qr['mdd'])} dari puncak dalam 1 tahun terakhir — pergerakan harga liar.",
+          "Risiko")
+
     pros.sort(key=lambda x: -x["s"])
     cons.sort(key=lambda x: -x["s"])
     return [{"text": x["text"], "tag": x["tag"]} for x in pros[:6]], \
@@ -1119,9 +1138,34 @@ def main():
         rec["val"] = fair_value(rec, medians)
         up = rec["val"]["upside"] if rec["val"] else None
         rec["rating"] = rating_for(rec["score"], rec["fund"], up)
+        rec["plan"] = trade_plan(rec)
+        # ---- kuantitatif: risiko & Monte Carlo
+        close = prices[rec["sym"]]["Close"]
+        rec["q_risk"] = quant.risk_metrics(close, spy_close)
+        rec["mc"] = None
+        if rec["q_risk"]:
+            qr = rec["q_risk"]
+            beta = qr["beta_calc"] if qr["beta_calc"] is not None else rec["f"].get("beta")
+            v = rec["val"]
+            exp, capm, wv = quant.expected_return(up, beta, v["confidence"] if v else None)
+            try:
+                rec["mc"] = quant.monte_carlo(close, rec["t"]["price"], exp, qr["vol"], qr["vol_now"],
+                                              v["fair"] if v else None, rec["plan"]["target"],
+                                              rec["plan"]["stop"], zlib.crc32(rec["sym"].encode()))
+                if rec["mc"]:
+                    rec["mc"]["capm"], rec["mc"]["view_w"] = capm, wv
+            except Exception as e:
+                log(f"  MC gagal {rec['sym']}: {e}")
         rec["pros"], rec["cons"] = build_reasons(rec, medians)
         rec["thesis"] = build_thesis(rec)
-        rec["plan"] = trade_plan(rec)
+
+    quant.factor_profile(records)
+    log("  Menyusun model portofolio...")
+    try:
+        portfolios = quant.build_portfolios(records, prices, spy_close, log=log)
+    except Exception as e:
+        log(f"  portofolio gagal: {e}")
+        portfolios = None
 
     records.sort(key=lambda x: -x["score"])
     for i, rec in enumerate(records):
@@ -1169,6 +1213,13 @@ def main():
             },
             "pros": rec["pros"], "cons": rec["cons"], "thesis": rec["thesis"], "plan": rec["plan"],
             "geo": rec["geo"], "country": rec["country"],
+            "factors": rec.get("factors"),
+            "q": None if not rec.get("q_risk") else {
+                **{k: r(x, 4) for k, x in rec["q_risk"].items()},
+                "mc": None if not rec.get("mc") else {
+                    k: (x if k == "fan" else (r(x, 4) if isinstance(x, float) else x))
+                    for k, x in rec["mc"].items()},
+            },
             "summary": rec["summary"], "website": rec["website"], "earnings_ts": rec["earnings_ts"],
         })
 
@@ -1201,7 +1252,36 @@ def main():
                   "breadth": r(breadth / len(stocks)), "spark": spy_t["spark"]}
 
     now = dt.datetime.now(dt.timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    # ---- perubahan rekomendasi vs hari bursa sebelumnya (baseline disimpan agar re-run hari yang sama aman)
+    base_path = os.path.join(OUT_DIR, "baseline.json")
+    stocks_path = os.path.join(OUT_DIR, "stocks.json")
+    try:
+        with open(stocks_path, encoding="utf-8") as fh:
+            prev_gen = (json.load(fh).get("generated") or "")[:10]
+    except Exception:
+        prev_gen = ""
+    if prev_gen and prev_gen < today and not args.tickers:
+        import shutil
+        shutil.copyfile(stocks_path, base_path)
+    changes, prev_map = quant.rating_changes(base_path, stocks)
+    for s_ in stocks:
+        pm = prev_map.get(s_["sym"])
+        if pm and (pm["rating"] != s_["rating"] or abs(pm["score"] - s_["score"]) >= 0.5):
+            s_["prev"] = pm
+
+    quant_out = {"generated": now.isoformat(timespec="seconds"), "portfolios": portfolios, "track": None}
+    if not args.tickers:
+        try:
+            quant_out["track"] = quant.update_track(os.path.join(OUT_DIR, "track.json"), today, stocks,
+                                                    spy_t["price"] if spy_t else None, prices)
+        except Exception as e:
+            log(f"  rekam jejak gagal: {e}")
+    with open(os.path.join(OUT_DIR, "quant.json"), "w", encoding="utf-8") as fh:
+        json.dump(quant_out, fh, ensure_ascii=False, separators=(",", ":"))
+
     payload = {
+        "changes": changes,
         "generated": now.isoformat(timespec="seconds"),
         "geo": geo_payload,
         "count": len(stocks),
