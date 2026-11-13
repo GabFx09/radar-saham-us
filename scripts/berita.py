@@ -60,8 +60,8 @@ MARKET_RULES = [
     (r"\bopec\+?\b.{0,40}\b(?:cut|boost|output|production)", 40, "Kebijakan OPEC", 0),
     (r"\bbank (?:run|failure|collapse)|\bcontagion\b|\bbailout", 65, "Krisis perbankan", -1),
     (r"\bdowngrades? (?:the )?(?:us|u\.s\.|united states) (?:credit|sovereign)", 65, "Peringkat utang AS turun", -1),
-    (r"\b(?:stocks|s&p 500|dow|nasdaq|markets?)\b.{0,30}\b(?:plunge|tumble|crash|sink|rout|sell-?off|worst day)", 45, "Pasar anjlok", -1),
-    (r"\b(?:stocks|s&p 500|dow|nasdaq)\b.{0,30}\b(?:record high|all-time high|surge|soar|best day|rally)", 30, "Pasar menguat tajam", 1),
+    (r"\b(?:stocks|s&p 500|dow|nasdaq|markets?)\b.{0,30}\b(?:plunge|tumble|crash|sink|rout|sell-?off|worst day|falls?|drops?|slides?|slumps?)", 45, "Pasar anjlok", -1),
+    (r"^(?!.*\b(?:falls?|drops?|sinks?|slides?|tumbles?|plunges?)\b).*\b(?:stocks|s&p 500|dow|nasdaq)\b.{0,30}\b(?:record high|all-time high|surge|soar|best day|rally)", 30, "Pasar menguat tajam", 1),
 ]
 INTENSIFIERS = [(r"\b(?:plunge|plummet|crater|collapse|tank|tumble|soar|skyrocket|surge|spike|jump)s?\b|\bhistoric\b|\bbreaking\b", 10),
                 (r"\b(?:\d{2,3}(?:\.\d)?) ?%", 8)]
