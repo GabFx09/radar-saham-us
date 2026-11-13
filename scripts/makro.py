@@ -316,6 +316,12 @@ def fetch_estimates(sym):
             rv = t.eps_revisions
             eh = t.earnings_history
             out = {}
+            try:
+                ins = insider_summary(t)
+                if ins:
+                    out["ins"] = ins
+            except Exception:  # noqa: BLE001
+                pass
             if tr is not None and len(tr):
                 for per, key in (("0y", "fy0"), ("+1y", "fy1")):
                     if per in tr.index:
@@ -348,6 +354,58 @@ def fetch_estimates(sym):
         except Exception:  # noqa: BLE001
             time.sleep(1.5)
     return sym, None
+
+
+def insider_summary(t):
+    """Ringkasan transaksi orang dalam: pembelian/penjualan pasar terbuka 90 hari + ringkasan 6 bulan Yahoo."""
+    out = {}
+    ip = t.insider_purchases
+    if ip is not None and len(ip):
+        lab = ip.columns[0]
+        rows = {str(r[lab]).strip(): r for _, r in ip.iterrows()}
+        g = lambda k, c="Shares": _r(rows[k][c]) if k in rows and pd.notna(rows[k][c]) else None  # noqa: E731
+        net = g("% Net Shares Purchased (Sold)")
+        out["net_pct"] = net if net is not None and abs(net) <= 1 else None  # >100% = data Yahoo keliru
+        out["buy6"], out["sell6"] = g("Purchases"), g("Sales")
+    tr = t.insider_transactions
+    if tr is not None and len(tr):
+        tr = tr.copy()
+        tr["d"] = pd.to_datetime(tr["Start Date"], errors="coerce")
+        cut = pd.Timestamp.now() - pd.Timedelta(days=90)
+        txt = tr["Text"].fillna("").str.lower()
+        buy = tr[(tr["d"] >= cut) & txt.str.startswith("purchase")]
+        sell = tr[(tr["d"] >= cut) & txt.str.startswith("sale")]
+        out["buy90"] = {"n": int(buy["Insider"].nunique()), "val": _r(buy["Value"].fillna(0).sum(), 0),
+                        "who": (str(buy.iloc[0]["Insider"]).title() + f" ({buy.iloc[0]['Position']})") if len(buy) else None}
+        out["sell90"] = {"n": int(sell["Insider"].nunique()), "val": _r(sell["Value"].fillna(0).sum(), 0)}
+
+        def kind(x):
+            x = x.lower()
+            return ("Beli" if x.startswith("purchase") else "Jual" if x.startswith("sale") else
+                    "Opsi" if "option" in x else "Hibah" if "gift" in x else "Penghargaan" if "award" in x else "Lain")
+        out["recent"] = [[str(r_["d"].date()) if pd.notna(r_["d"]) else "", str(r_["Insider"]).title()[:26],
+                          str(r_.get("Position") or "")[:22], kind(str(r_["Text"] or "")),
+                          _r(r_["Shares"], 0), _r(r_["Value"], 0)] for _, r_ in tr.head(8).iterrows()]
+    return out or None
+
+
+def insider_score(ins, mcap=None):
+    """0-100: pembelian pasar terbuka (terutama banyak orang = cluster buying) positif, penjualan bersih besar negatif."""
+    if not ins:
+        return None
+    s = 50.0
+    b = ins.get("buy90") or {}
+    if b.get("n", 0) >= 2 and (b.get("val") or 0) >= 100_000:
+        s += 30
+    elif (b.get("val") or 0) >= 100_000:
+        s += 15
+    net = ins.get("net_pct")
+    if net is not None:
+        s += max(-15, min(10, net * 100))
+    sv = (ins.get("sell90") or {}).get("val") or 0
+    if mcap and sv > 0.005 * mcap:
+        s -= 10
+    return round(max(0, min(100, s)), 1)
 
 
 def revision_score(e):

@@ -282,3 +282,16 @@ pre.code { max-width: 100%; }
 .chat-input .btn { width: 40px; height: 40px; padding: 0; border-radius: 50%; }
 .chat-input .btn svg { width: 18px; height: 18px; fill: #000; stroke: none; }
 .nbadge[hidden] { display: none !important; }
+
+/* ---- portofolio & berita */
+.porto-add { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; margin-top: 12px; }
+@media (max-width: 560px) { .porto-add { grid-template-columns: 1fr 1fr; } .porto-add .btn { grid-column: 1 / -1; } }
+.porto-add input { height: 36px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; padding: 0 8px; min-width: 0; border-radius: 2px; }
+.porto-add input:focus { outline: 1px solid var(--accent); }
+.news-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); border-left: 2px solid var(--warn); }
+.news-row.neg { border-left-color: var(--down); }
+.news-row.pos { border-left-color: var(--up); }
+.news-row:last-child { border-bottom: 0; }
+.news-row .ns { font-family: var(--mono); font-weight: 800; font-size: 16px; color: var(--accent); text-align: center; }
+.news-row .nt { display: block; color: var(--text); font-weight: 600; margin: 2px 0; }
+.news-row .nt:hover { color: var(--accent-2); }

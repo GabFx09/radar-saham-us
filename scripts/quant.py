@@ -329,13 +329,23 @@ def update_track(path, date, stocks, spy_price, prices):
             track = json.load(fh)
     except Exception:
         track = {"snaps": []}
-    snap = {"d": date, "spy": _r(spy_price, 2),
+    FK = ["score", "fund", "value", "quality", "growth", "health", "tech", "upside", "rev", "mom"]
+    fac = {}
+    for s in stocks:
+        p = s.get("pillars") or {}
+        fac[s["sym"]] = [s.get("price"), s.get("score"), s.get("fund"), p.get("value"), p.get("quality"), p.get("growth"),
+                         p.get("health"), s.get("tech"), (s.get("val") or {}).get("upside"), s.get("rev"),
+                         (s.get("factors") or {}).get("momentum")]
+    snap = {"d": date, "spy": _r(spy_price, 2), "fk": FK, "f": fac,
             "sb": {s["sym"]: s["price"] for s in stocks if s["rating"] == "STRONG BUY"},
             "b": {s["sym"]: s["price"] for s in stocks if s["rating"] == "BUY"},
             "h": {s["sym"]: s["price"] for s in stocks if s["rating"] == "HINDARI"}}
     track["snaps"] = [x for x in track["snaps"] if x["d"] != date] + [snap]
     track["snaps"].sort(key=lambda x: x["d"])
     track["snaps"] = track["snaps"][-400:]
+    # snapshot lama: simpan faktor hanya 130 snapshot terakhir agar berkas tidak membengkak
+    for sn in track["snaps"][:-130]:
+        sn.pop("f", None)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(track, fh, separators=(",", ":"))
 
@@ -382,11 +392,52 @@ def update_track(path, date, stocks, spy_price, prices):
                 best.append([sym, _r(p1 / p0 - 1)])
         best.sort(key=lambda x: -x[1])
     return {
+        "ic": signal_ic(track["snaps"], last),
         "since": track["snaps"][0]["d"], "n_snaps": len(track["snaps"]),
         "cohorts": cohorts[::-1][:60],
         "alpha": {"sb": avg_alpha("sb"), "b": avg_alpha("b"), "h": avg_alpha("h")},
         "first_movers": {"best": best[:5], "worst": best[-5:][::-1]} if best else None,
     }
+
+
+def signal_ic(snaps, last_px):
+    """Information Coefficient: korelasi peringkat (Spearman) antara nilai faktor pada tanggal snapshot dan return
+    sesudahnya. IC rata-rata > 0,05 yang konsisten = faktor punya daya prediksi."""
+    names = {"score": "Skor gabungan", "fund": "Fundamental", "value": "Valuasi", "quality": "Kualitas", "growth": "Pertumbuhan",
+             "health": "Kesehatan", "tech": "Teknikal", "upside": "Proyeksi naik", "rev": "Revisi estimasi", "mom": "Momentum"}
+    today = dt.date.today()
+    buckets = {"h5": (5, 19), "h20": (20, 59), "h60": (60, 10_000)}
+    acc = {k: {b: [] for b in buckets} for k in names}
+    for sn in snaps:
+        if "f" not in sn:
+            continue
+        age = (today - dt.date.fromisoformat(sn["d"])).days
+        b = next((k for k, (lo, hi) in buckets.items() if lo <= age <= hi), None)
+        if not b:
+            continue
+        fk = sn["fk"]
+        rows = []
+        for sym, vals in sn["f"].items():
+            p0, p1 = vals[0], last_px.get(sym)
+            if p0 and p1:
+                rows.append([p1 / p0 - 1] + vals[1:])
+        if len(rows) < 50:
+            continue
+        df = pd.DataFrame(rows, columns=["ret"] + fk)
+        for k in names:
+            if k in df and df[k].notna().sum() > 40:
+                ic = df["ret"].corr(df[k], method="spearman")
+                if pd.notna(ic):
+                    acc[k][b].append(float(ic))
+    out = []
+    for k, n in names.items():
+        row = {"key": k, "name": n}
+        for b in buckets:
+            xs = acc[k][b]
+            row[b] = _r(float(np.mean(xs)), 3) if xs else None
+            row[b + "_n"] = len(xs)
+        out.append(row)
+    return out
 
 
 def rating_changes(prev_path, stocks):

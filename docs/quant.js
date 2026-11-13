@@ -462,6 +462,7 @@ async function renderStrategi(el) {
     return `<div class="card card-pad">
       <h3 class="card-title"><span class="ico">📒</span>Rekam Jejak Rekomendasi</h3>
       <p class="small muted" style="margin:-6px 0 12px">Setiap hari daftar rekomendasi disimpan beserta harganya, lalu dilacak kinerjanya — tanpa diedit. Dicatat sejak <b>${fmt.date(tr.since)}</b> (${tr.n_snaps} snapshot).</p>
+      ${trackBanner(tr)}
       <div class="kv k3">${alphaBox('sb', 'Strong Buy')}${alphaBox('b', 'Buy')}${alphaBox('h', 'Hindari')}</div>
       <div class="cmp-scroll" style="margin-top:12px"><table class="hold-table">
         <tr><th>Sejak</th><th class="r">Strong Buy</th><th class="r">Buy</th><th class="r">Hindari</th><th class="r">S&amp;P 500</th></tr>
@@ -485,7 +486,8 @@ async function renderStrategi(el) {
     <div id="portBox">${portHtml()}</div>
     <section class="section">${trackHtml}</section>
     <section class="section">${changesHtml(true)}</section>
-    <section class="section">${earningsHtml(30)}</section>
+    <section class="section">${icCard(tr)}</section>
+    <section class="section grid-2">${earningsHtml(30)}${dividendHtml(30)}</section>
     <section class="section grid-2">
       <a class="card card-pad link-card" href="#/bandingkan"><span class="ico-lg">⚖️</span><div><b>Bandingkan Saham</b><div class="small muted">Adu 2–4 saham berdampingan</div></div><span class="faint">›</span></a>
       <a class="card card-pad link-card" href="#/siklus"><span class="ico-lg">🔄</span><div><b>Siklus Pasar 100 Tahun</b><div class="small muted">Bull/bear, siklus presiden, musiman</div></div><span class="faint">›</span></a>

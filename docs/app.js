@@ -180,6 +180,8 @@ function render() {
   else if (view === 'heatmap') renderHeatmap(el);
   else if (view === 'pengaturan') renderSettings(el);
   else if (view === 'pesan') renderPesan(el);
+  else if (view === 'portofolio') renderPorto(el);
+  else if (view === 'berita') renderBerita(el);
   else renderHome(el);
   updateCmpBar();
   termAfterRender(view);
@@ -677,8 +679,8 @@ function renderDetail(el, sym) {
       <button class="btn" id="shareBtn"><svg viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13"/></svg>Bagikan</button>
     </div>
     <div class="detail-grid" style="margin-top:16px">
-      <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}${qtrCard(s, 10)}</div>
-      <div class="dcol">${scoreHtml}${valHtml}${estCard(s, 6)}${mcCard(s, 6)}${planHtml}${techHtml}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
+      <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}${qtrCard(s, 10)}${insiderCard(s, 10)}</div>
+      <div class="dcol">${scoreHtml}${valHtml}${ownValCard(s, 6)}${estCard(s, 6)}${mcCard(s, 6)}${planHtml}${techHtml}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
     </div>
     <p class="disclaimer">Analisis otomatis berbasis data Yahoo Finance; bukan rekomendasi investasi personal. Proyeksi adalah estimasi model dan bisa meleset.</p>
   </div>`;
@@ -834,6 +836,7 @@ function renderWatchlist(el) {
   const ups = list.filter((s) => s.val).map((s) => s.val.upside);
   const avg = ups.length ? ups.reduce((a, b) => a + b, 0) / ups.length : null;
   el.innerHTML = `<div class="fade-in">
+    ${wlTabs('wl')}
     <h1 class="page-title">Watchlist</h1>
     <p class="page-sub">Saham pantauan Anda — ${App.cloud && App.cloud.gistId ? '☁ tersinkron ke cloud' : 'tersimpan di perangkat ini'} · <a class="link" href="#/pengaturan">Sinkronisasi &amp; notifikasi ›</a></p>
     ${(() => { const ch = list.filter((s) => s.prev && s.prev.rating !== s.rating); return ch.length ? `<div class="card card-pad" style="margin-bottom:14px;border-color:var(--accent)">
@@ -909,6 +912,12 @@ function renderMethod(el) {
 
     <h2>Data Kuartalan</h2>
     <p>Free cash flow memakai jumlah 4 kuartal terakhir (TTM) bila tersedia — lebih segar daripada laporan tahunan yang bisa tertinggal hingga 12 bulan. Pertumbuhan pendapatan per kuartal (YoY) dan percepatannya, serta margin operasi 12 bulan vs 12 bulan sebelumnya, ikut menjadi alasan beli/risiko.</p>
+
+    <h2>Orang Dalam, Valuasi Historis &amp; Uji Sinyal</h2>
+    <p><b>Orang dalam</b> — transaksi direksi/eksekutif 90 hari (pembelian di pasar terbuka vs penjualan) dan ringkasan 6 bulan. Pembelian oleh ≥2 orang dalam (<i>cluster buying</i>) menaikkan skor; penjualan bersih besar menurunkannya. Skor orang dalam = 20% skor analis (50% konsensus, 30% revisi estimasi).</p>
+    <p><b>Valuasi vs riwayat sendiri</b> — P/E dan P/S tiap akhir tahun fiskal (≤4 tahun, dari laporan keuangan + harga bulanan) dibanding nilai sekarang. Premi/diskon P/E terhadap median sendiri menjadi salah satu metrik pilar Valuasi.</p>
+    <p><b>Uji sinyal</b> — setiap hari nilai faktor semua saham disimpan, lalu dihitung <i>Information Coefficient</i> (korelasi peringkat Spearman) terhadap return 1 minggu, 1 bulan, dan 3 bulan sesudahnya.</p>
+    <p><b>Universe</b> — S&amp;P 500 + S&amp;P MidCap 400 (dari Wikipedia) + beberapa saham growth populer.</p>
 
     <h2>8. Revisi Estimasi &amp; Monitor Makro</h2>
     <p><b>Revisi estimasi</b> — untuk ±230 saham teratas, perubahan estimasi EPS tahun ini &amp; tahun depan dalam 7/30/90 hari, jumlah revisi naik vs turun, dan kejutan laba 4 kuartal. Skor revisi (55% revisi 90 hari, 20% rasio naik/turun, 25% kejutan laba) menyumbang 40% skor analis.</p>

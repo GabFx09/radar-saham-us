@@ -99,7 +99,7 @@ def important_news(cfg, state, hours, today):
 
 
 def usd(x):
-    return "–" if x is None else f"${x:,.2f}"
+    return "–" if x is None else (f"−${-x:,.2f}" if x < 0 else f"${x:,.2f}")
 
 
 # ----------------------------------------------------------------------------- Telegram
@@ -130,11 +130,11 @@ def plain(htm):
     return html.unescape(t)
 
 
-def deliver(kind, title, lines, url=None, sym=None, prio="normal"):
+def deliver(kind, title, lines, url=None, sym=None, prio="normal", tombol=None, gambar=None):
     """Antrekan satu pesan: dikirim ke aplikasi Kabar (saluran "Radar Saham") + Telegram (opsional)."""
     body = "\n".join(lines).strip()
     tg = send(f"<b>{title}</b>\n{body}")
-    OUTBOX.append({"judul": plain(title), "html": body, "url": url, "prioritas": prio})
+    OUTBOX.append({"judul": plain(title), "html": body, "url": url, "prioritas": prio, "tombol": tombol, "gambar": gambar})
     log(f"[{kind}] {plain(title)} — telegram={'ya' if tg else 'tidak'}")
 
 
@@ -213,6 +213,7 @@ def user_config():
     cfg.setdefault("watchlist", [])
     cfg.setdefault("alerts", {})
     cfg.setdefault("settings", {})
+    cfg.setdefault("holdings", [])
     CTX.update({"gid": gid, "state": state, "cfg": cfg})
     return gid, cfg, state
 
@@ -230,13 +231,133 @@ def detail(sym):
     return load_json(os.path.join("detail", f"{sym}.json")) or {}
 
 
+# ----------------------------------------------------------------------------- tombol aksi dari Kabar
+def sym_buttons(sym, cfg):
+    b = []
+    if sym not in cfg.get("watchlist", []):
+        b.append(f"⭐ {sym} ke watchlist")
+    b.append(f"🔕 {sym} hari ini")
+    return b
+
+
+def process_actions(gid, cfg, state):
+    """Baca jawaban tombol di Kabar (saluran Radar Saham) lalu jalankan: tambah watchlist / bisukan hari ini."""
+    if not KTOKEN:
+        return
+    import re
+    try:
+        import kabar
+        _, box = kabar._read(KTOKEN, kabar._gist_id(KTOKEN))
+    except Exception as e:  # noqa: BLE001
+        log(f"Aksi Kabar tidak terbaca: {e}")
+        return
+    done = set(state.get("acted") or [])
+    today = dt.date.today().isoformat()
+    changed = False
+    for m in box.get("messages") or []:
+        a = (m.get("resp") or {}).get("a") or ""
+        if m.get("ch") != KABAR_CHANNEL or not a or m["id"] in done:
+            continue
+        done.add(m["id"])
+        w = re.match(r"^⭐\s*([A-Z0-9.\-]+)\s+ke watchlist", a)
+        q = re.match(r"^🔕\s*([A-Z0-9.\-]+)\s+hari ini", a)
+        if w and w.group(1) not in cfg["watchlist"]:
+            cfg["watchlist"].append(w.group(1))
+            changed = True
+            log(f"Aksi: {w.group(1)} ditambahkan ke watchlist")
+        if q:
+            state.setdefault("mute", {})[q.group(1)] = today
+            log(f"Aksi: {q.group(1)} dibisukan hari ini")
+    state["acted"] = sorted(done)[-400:]
+    state["mute"] = {k: v for k, v in (state.get("mute") or {}).items() if v == today}
+    if changed and gid:
+        cfg["updated"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        body = {k: v for k, v in cfg.items()}
+        r = gh("PATCH", f"/gists/{gid}", json={"files": {GIST_FILE: {"content": json.dumps(body, indent=1)}}})
+        if not r.ok:
+            log(f"Watchlist gagal disimpan: {r.status_code}")
+
+
+def muted(state, sym):
+    return (state.get("mute") or {}).get(sym) == dt.date.today().isoformat()
+
+
+# ----------------------------------------------------------------------------- portofolio
+def portfolio_lines(cfg, by, rows):
+    hs = [h for h in cfg.get("holdings") or [] if h.get("sym") in by and (h.get("qty") or 0) > 0]
+    if not hs:
+        return []
+    val = cost = day = 0.0
+    det = []
+    for h in hs:
+        s = by[h["sym"]]
+        q, c = float(h["qty"]), float(h.get("cost") or 0)
+        v = q * s["price"]
+        val += v
+        cost += q * c
+        day += v - v / (1 + (s.get("chg1d") or 0))
+        pl = (s["price"] / c - 1) if c else None
+        det.append((v, f"{esc(h['sym'])} {q:g} lbr · {usd(v)} · {pct(pl, 1)} · {esc(s['rating'])}"))
+    det.sort(key=lambda x: -x[0])
+    pl_tot = val - cost if cost else None
+    L = [f"\n<b>💼 PORTOFOLIO</b> · nilai <b>{usd(val)}</b> · hari ini {'+' if day >= 0 else ''}{usd(day)}"
+         + (f" · total {('+' if pl_tot >= 0 else '')}{usd(pl_tot)} ({pct(pl_tot / cost, 1)})" if pl_tot is not None else "")]
+    if "IDR=X" in rows:
+        L.append(f"≈ Rp {val * rows['IDR=X']['last']:,.0f}".replace(",", "."))
+    L.extend(x for _, x in det[:12])
+    return L
+
+
+def weekly_chart(syms, by, mk):
+    """Grafik batang return 1 minggu watchlist + portofolio vs S&P 500 (PNG) untuk laporan Senin."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
+    data = []
+    for sym in syms[:16]:
+        h = load_json(os.path.join("history", f"{sym}.json"))
+        if h and len(h.get("c", [])) > 6:
+            data.append((sym, h["c"][-1] / h["c"][-6] - 1))
+    spy = next((r for g in mk.get("assets", []) for r in g["rows"] if r["sym"] == "SPY"), None)
+    if spy and spy.get("w1") is not None:
+        data.append(("S&P500", spy["w1"]))
+    if len(data) < 2:
+        return None
+    data.sort(key=lambda x: x[1])
+    fig, ax = plt.subplots(figsize=(7, 0.42 * len(data) + 1.2), dpi=110)
+    fig.patch.set_facecolor("#000000")
+    ax.set_facecolor("#000000")
+    cols = ["#3cc8ff" if n == "S&P500" else ("#1fe07f" if v >= 0 else "#ff4f4f") for n, v in data]
+    ax.barh([n for n, _ in data], [v * 100 for _, v in data], color=cols)
+    for i, (_, v) in enumerate(data):
+        ax.text(v * 100, i, f" {v * 100:+.1f}%", va="center", ha="left" if v >= 0 else "right", color="#ececec", fontsize=8, family="monospace")
+    lo, hi = min(0, min(v for _, v in data)) * 100, max(0, max(v for _, v in data)) * 100
+    pad = (hi - lo) * 0.18 or 1
+    ax.set_xlim(lo - (pad if lo < 0 else 0), hi + pad)
+    ax.axvline(0, color="#767676", lw=0.8)
+    ax.tick_params(colors="#b0b0b0", labelsize=8)
+    for sp in ax.spines.values():
+        sp.set_color("#262626")
+    ax.set_title("RETURN 1 MINGGU · WATCHLIST & PORTOFOLIO", color="#ff9f1a", fontsize=10, family="monospace", loc="left")
+    fig.tight_layout()
+    import tempfile
+    path = os.path.join(os.getenv("RUNNER_TEMP") or tempfile.gettempdir(), "radar-mingguan.png")
+    fig.savefig(path, facecolor="#000000")
+    plt.close(fig)
+    return path
+
+
 # ----------------------------------------------------------------------------- ringkasan pagi
 def digest():
     d = load_json("stocks.json")
     if not d:
         log("stocks.json tidak ada")
         return
-    gid, cfg, _ = user_config()
+    gid, cfg, state = user_config()
+    process_actions(gid, cfg, state)
     st = cfg["settings"]
     if st.get("daily") is False:
         log("Ringkasan harian dimatikan di pengaturan.")
@@ -244,6 +365,8 @@ def digest():
     by = {s["sym"]: s for s in d["stocks"]}
     mk = load_json("makro.json") or {}
     wl = [s for s in cfg["watchlist"] if s in by]
+    held = [h["sym"] for h in cfg.get("holdings") or [] if h.get("sym") in by]
+    mine = list(dict.fromkeys(held + wl))
     now = time.time()
     tgl = dt.datetime.fromisoformat(d["generated"]).astimezone(dt.timezone(dt.timedelta(hours=7)))
     hari = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"][tgl.weekday()]
@@ -265,6 +388,25 @@ def digest():
         parts.append(f"USD/IDR {rows['IDR=X']['last']:,.0f}")
     if parts:
         L.append("🌐 " + " · ".join(parts))
+
+    # pengingat H-1: laporan keuangan & ex-dividend saham milik/pantauan
+    soon = []
+    for sym in mine:
+        s = by[sym]
+        e = s.get("earnings_ts")
+        if e and now - 3600 < e < now + 36 * 3600:
+            soon.append(f"📅 <b>{esc(sym)}</b> lapor keuangan {dt.datetime.fromtimestamp(e, dt.timezone(dt.timedelta(hours=7))).strftime('%a %d/%m %H:%M')} WIB"
+                        + (" (perkiraan)" if s.get("earnings_est") else "") + " — harga bisa bergerak tajam")
+        x = s.get("exdiv_ts")
+        if x and now - 3600 < x < now + 3 * 86400:
+            soon.append(f"💵 <b>{esc(sym)}</b> ex-dividend {dt.datetime.fromtimestamp(x, dt.timezone.utc).strftime('%d/%m')}"
+                        + (" (perkiraan)" if s.get("exdiv_est") else "")
+                        + (f" · ${s['div_rate']:.2f}/thn" if s.get("div_rate") else "") + " — harus sudah memegang sebelum tanggal ini")
+    if soon:
+        L.append("\n<b>⏰ SEGERA</b>")
+        L.extend(soon)
+
+    L.extend(portfolio_lines(cfg, by, rows))
 
     # watchlist
     if wl:
@@ -330,6 +472,13 @@ def digest():
         log(f"Berita gagal: {e}")
     L.append(f"\n<a href=\"{SITE}\">Buka Radar Saham</a> · bukan nasihat investasi")
     deliver("digest", title, L, SITE)
+    if tgl.weekday() == 0 and mine:  # Senin: laporan mingguan bergrafik
+        try:
+            png = weekly_chart(mine, by, mk)
+            if png:
+                deliver("weekly", "📈 Laporan mingguan", ["Return 1 minggu saham watchlist & portofolio dibanding S&amp;P 500."], SITE, gambar=png)
+        except Exception as e:  # noqa: BLE001
+            log(f"Grafik mingguan gagal: {e}")
     flush()
     log("Ringkasan terkirim." if TOKEN else "")
 
@@ -345,19 +494,24 @@ def alerts():
         log("GIST_TOKEN/gist belum ada — alert & berita butuh gist (watchlist, kotak masuk, dan pencegah pesan berulang).")
         return
     today = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
+    process_actions(gid, cfg, state)
     # ---- berita penting (setiap jadwal, termasuk di luar jam bursa & akhir pekan)
     try:
         fresh = important_news(cfg, state, hours=6, today=today)
         if fresh:
             for n in fresh:
+                if n["sym"] and muted(state, n["sym"]):
+                    continue
                 deliver("news", f"📰 {n['sym'] or 'Pasar'}: {', '.join(n['cats'])}", news_lines([n]), n["url"], n["sym"],
-                        prio="tinggi" if n["score"] >= 65 else "normal")
+                        prio="tinggi" if n["score"] >= 65 else "normal",
+                        tombol=sym_buttons(n["sym"], cfg) if n["sym"] else None)
             log(f"{len(fresh)} berita penting terkirim.")
         else:
             log("Tidak ada berita penting baru.")
     except Exception as e:  # noqa: BLE001
         log(f"Berita gagal: {e}")
-    syms = sorted(set(cfg["watchlist"]) | set(cfg["alerts"].keys()))
+    held = {h["sym"] for h in cfg.get("holdings") or [] if h.get("sym")}
+    syms = sorted((set(cfg["watchlist"]) | set(cfg["alerts"].keys()) | held) - {x for x in (state.get("mute") or {}) if muted(state, x)})
     ny = dt.datetime.now(dt.timezone(dt.timedelta(hours=-5)))
     mins = ny.hour * 60 + ny.minute
     market_open = ny.weekday() < 5 and 8 * 60 + 30 <= mins <= 17 * 60  # rentang lebar: aman untuk DST
@@ -403,9 +557,13 @@ def alerts():
             if key in sent:
                 continue
             sent[key] = today
-            msgs.append(text)
+            msgs.append((sym, kind, text))
     if msgs:
-        deliver("alert", "⚡ Alert harga", msgs, SITE, prio="tinggi" if any("🛑" in m for m in msgs) else "normal")
+        for sym in dict.fromkeys(x[0] for x in msgs):
+            mine = [x for x in msgs if x[0] == sym]
+            urgent = any(k == "stop" for _, k, _ in mine) or (sym in held and any(k == "move" for _, k, _ in mine))
+            deliver("alert", f"⚡ Alert {sym}" + (" · portofolio" if sym in held else ""), [t for _, _, t in mine],
+                    f"{SITE}#/s/{sym}", sym, prio="tinggi" if urgent else "normal", tombol=sym_buttons(sym, cfg))
         log(f"{len(msgs)} alert terkirim.")
     else:
         log("Tidak ada alert baru.")

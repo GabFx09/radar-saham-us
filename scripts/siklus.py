@@ -375,15 +375,42 @@ FRED_CPI = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL"
 def _get_csv(url, log):
     import io
     import requests
-    for attempt in range(3):
+    import time as _t
+    for attempt in range(4):
         try:
-            r = requests.get(url, timeout=40, headers={"User-Agent": "radar-saham/1.0"})
+            r = requests.get(url, timeout=(15, 90), headers={"User-Agent": "Mozilla/5.0 (compatible; radar-saham/1.0)"})
             r.raise_for_status()
             return pd.read_csv(io.StringIO(r.text))
         except Exception as e:  # noqa: BLE001
-            if attempt == 2:
+            if attempt == 3:
                 log(f"  siklus: gagal unduh {url.split('/')[2]} ({e})")
+            _t.sleep(4 * (attempt + 1))
     return None
+
+
+def _bls_cpi(log):
+    """Cadangan CPI-U (CUUR0000SA0) dari API publik BLS v1 — 10 tahun terakhir, tanpa kunci API."""
+    import datetime as _dt
+    import requests
+    end = _dt.date.today().year
+    rows = []
+    for a, b in ((end - 9, end),):
+        try:
+            r = requests.post("https://api.bls.gov/publicAPI/v1/timeseries/data/", timeout=(15, 60),
+                              json={"seriesid": ["CUUR0000SA0"], "startyear": str(a), "endyear": str(b)})
+            r.raise_for_status()
+            for d in r.json()["Results"]["series"][0]["data"]:
+                try:
+                    val = float(d["value"])
+                except (TypeError, ValueError):
+                    continue  # bulan tanpa data (mis. saat shutdown pemerintah AS)
+                if d["period"].startswith("M") and d["period"] != "M13":
+                    rows.append((pd.Period(f"{d['year']}-{d['period'][1:]}", "M"), val))
+        except Exception as e:  # noqa: BLE001
+            log(f"  siklus: BLS gagal ({e})")
+    if not rows:
+        return None
+    return pd.Series(dict(rows)).sort_index()
 
 
 def long_run(c, log=print):
@@ -439,10 +466,16 @@ def long_run(c, log=print):
         df["E"] = e
     # --- CPI: FRED (bulanan sejak 1947) disambung ke CPI Shiller
     fred = _get_csv(FRED_CPI, log)
+    fs = None
     if fred is not None and len(fred.columns) >= 2:
         fred.columns = ["date", "cpi"]
         fred["date"] = pd.to_datetime(fred["date"]).dt.to_period("M")
         fs = pd.to_numeric(fred.set_index("date")["cpi"], errors="coerce").dropna()
+    if fs is None or len(fs) < 24:
+        fs = _bls_cpi(log)  # cadangan bila FRED tidak bisa diakses
+        if fs is not None:
+            log(f"  siklus: CPI dari BLS sampai {fs.index[-1]}")
+    if fs is not None:
         ov = df["CPI"].dropna().index.intersection(fs.index)
         if len(ov) > 12:
             k = float((df.loc[ov[-12:], "CPI"] / fs.loc[ov[-12:]]).mean())

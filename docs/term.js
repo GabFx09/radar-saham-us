@@ -6,22 +6,24 @@
 'use strict';
 
 const CMDS = [
-  { k: 'BERANDA', h: '#/', d: 'Ringkasan pasar & pilihan teratas', n: '1', a: ['HOME', 'HOM', 'TOP'] },
+  { k: 'BERANDA', h: '#/', d: 'Ringkasan pasar & pilihan teratas', n: '1', a: ['HOME', 'HOM'] },
   { k: 'SCREENER', h: '#/screener', d: 'Saring 530+ saham · SCR STRONG / SCR GARP …', n: '2', a: ['SCR', 'EQS', 'SCREEN'] },
   { k: 'MAKRO', h: '#/makro', d: 'Fear & Greed, kurva yield, rotasi sektor, lintas aset', n: '3', a: ['MACRO', 'PASAR', 'ECO', 'MKT', 'WEI'] },
   { k: 'HEATMAP', h: '#/heatmap', d: 'Peta panas seluruh pasar', n: '4', a: ['HEAT', 'MAP', 'IMAP', 'MOV'] },
   { k: 'SIKLUS', h: '#/siklus', d: 'Siklus pasar 100 tahun', n: '5', a: ['CYC', 'CYCLE', 'SEAS'] },
   { k: 'GEO', h: '#/geo', d: 'Analisis geopolitik', n: '6', a: ['GEOPOLITIK', 'RISK'] },
   { k: 'PESAN', h: '#/pesan', d: 'Kotak masuk & Radar Bot (alert, berita penting, tanya saham)', n: '9', a: ['CHAT', 'MSG', 'INBOX', 'BOT', 'NOTIF'] },
-  { k: 'STRATEGI', h: '#/strategi', d: 'Model portofolio, rekam jejak, kalender laba', n: '7', a: ['PORT', 'STRAT', 'PRT', 'EVTS'] },
+  { k: 'STRATEGI', h: '#/strategi', d: 'Model portofolio, rekam jejak, kalender laba', n: '7', a: ['STRAT', 'PRT', 'EVTS', 'MODEL'] },
   { k: 'WATCHLIST', h: '#/watchlist', d: 'Saham pantauan Anda', n: '8', a: ['WL', 'WATCH', 'MON'] },
   { k: 'METODE', h: '#/metode', d: 'Metodologi & sumber data', n: '', a: ['DOCS', 'METODOLOGI'] },
+  { k: 'PORTOFOLIO', h: '#/portofolio', d: 'Saham milik Anda: untung/rugi, risiko, alokasi', n: '', a: ['PORT', 'PF', 'HOLD', 'MILIK'] },
+  { k: 'BERITA', h: '#/berita', d: 'Berita penting 48 jam (akuisisi, investigasi, The Fed…)', n: '', a: ['NEWS', 'N', 'CN', 'TOP'] },
   { k: 'SETELAN', h: '#/pengaturan', d: 'Sinkronisasi cloud, Telegram & alert harga', n: '0', a: ['SET', 'PENGATURAN', 'ALERT', 'ALRT', 'SYNC'] },
   { k: 'CMP', h: '#/bandingkan', d: 'Bandingkan saham · CMP NVDA AMD AVGO', n: '', a: ['BANDINGKAN', 'COMP', 'RV'] },
   { k: 'TEMA', h: 'theme', d: 'Ganti tema terminal gelap / kertas', n: '', a: ['THEME'] },
   { k: 'HELP', h: 'help', d: 'Daftar perintah', n: '', a: ['?', 'BANTUAN'] },
 ];
-const MARKET_VIEWS = ['makro', 'heatmap', 'siklus', 'geo', 'strategi', 'bandingkan'];
+const MARKET_VIEWS = ['makro', 'heatmap', 'berita', 'siklus', 'geo', 'strategi', 'bandingkan'];
 
 function findCmd(word) {
   const w = word.toUpperCase();
@@ -32,6 +34,7 @@ function navActive(a, view) {
   const nav = a.dataset.nav;
   if (view === 's') return false;
   if (nav === view) return true;
+  if (nav === 'watchlist' && view === 'portofolio') return true;
   if (a.closest('.bottomnav')) {
     if (nav === 'makro' && MARKET_VIEWS.includes(view)) return true;
     if (nav === 'strategi' && view === 'bandingkan') return true;
@@ -44,7 +47,7 @@ function termAfterRender(view) {
   const sub = $('#subnav');
   if (!sub) return;
   sub.innerHTML = MARKET_VIEWS.includes(view) ? `<nav class="mtabs" aria-label="Analisis pasar">${[
-    ['makro', 'Makro'], ['heatmap', 'Heatmap'], ['siklus', 'Siklus 100 thn'], ['geo', 'Geopolitik'], ['strategi', 'Strategi'], ['bandingkan', 'Bandingkan']]
+    ['makro', 'Makro'], ['heatmap', 'Heatmap'], ['berita', 'Berita'], ['siklus', 'Siklus 100 thn'], ['geo', 'Geopolitik'], ['strategi', 'Strategi'], ['bandingkan', 'Bandingkan']]
     .map(([k, n]) => `<a href="#/${k}" class="${k === view ? 'on' : ''}">${n}</a>`).join('')}</nav>` : '';
 }
 

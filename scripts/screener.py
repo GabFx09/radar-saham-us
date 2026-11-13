@@ -165,6 +165,96 @@ def next_earnings(info):
 DUP_CLASSES = {"GOOG", "FOX", "NWS"}
 
 
+def sp400():
+    """Konstituen S&P MidCap 400 dari Wikipedia (kosong bila gagal — universe tetap S&P 500)."""
+    try:
+        r_ = requests.get("https://en.wikipedia.org/wiki/List_of_S%26P_400_companies", timeout=30,
+                          headers={"User-Agent": "Mozilla/5.0 (compatible; radar-saham/1.0)"})
+        r_.raise_for_status()
+        for t in pd.read_html(io.StringIO(r_.text)):
+            col = next((c for c in t.columns if str(c).lower() in ("symbol", "ticker", "ticker symbol")), None)
+            if col is not None and len(t) > 300:
+                return [str(x).strip().replace(".", "-") for x in t[col].tolist() if str(x).strip()]
+    except Exception as e:  # noqa: BLE001
+        log(f"Gagal ambil S&P 400 ({e}) — lanjut tanpa mid cap")
+    return []
+
+
+def fetch_monthly(symbols):
+    """Harga penutupan bulanan 5 tahun (untuk valuasi vs riwayat sendiri)."""
+    out = {}
+    for i in range(0, len(symbols), 100):
+        part = symbols[i:i + 100]
+        for attempt in range(2):
+            try:
+                df = yf.download(part, period="5y", interval="1mo", auto_adjust=False, group_by="ticker",
+                                 threads=True, progress=False)
+                break
+            except Exception:  # noqa: BLE001
+                df = None
+                time.sleep(3)
+        if df is None:
+            continue
+        for s_ in part:
+            try:
+                sub = df[s_] if isinstance(df.columns, pd.MultiIndex) else df
+                c = sub["Close"].dropna()
+                if len(c) > 12:
+                    out[s_] = c
+            except Exception:  # noqa: BLE001
+                pass
+    return out
+
+
+def own_valuation(inc, mclose, pe_now, ps_now):
+    """P/E & P/S tiap akhir tahun fiskal (≤4 thn) dari laporan + harga bulanan -> premi/diskon vs median sendiri."""
+    if inc is None or inc.empty or mclose is None or len(mclose) < 12:
+        return None
+    eps = sseries(inc, ["Diluted EPS", "Basic EPS"], 4)
+    rev = sseries(inc, "Total Revenue", 4)
+    sh = sseries(inc, ["Diluted Average Shares", "Basic Average Shares"], 4)
+    idx = mclose.index.tz_localize(None) if getattr(mclose.index, "tz", None) is not None else mclose.index
+    mc = pd.Series(mclose.values, index=idx)
+    pes, pss, yrs = [], [], []
+    for i, col in enumerate(list(inc.columns)[:4]):
+        d = pd.Timestamp(col)
+        px = mc[mc.index <= d]
+        if not len(px):
+            continue
+        p = float(px.iloc[-1])
+        if eps[i] and eps[i] > 0:
+            pes.append(p / eps[i])
+        if rev[i] and sh[i] and sh[i] > 0:
+            pss.append(p / (rev[i] / sh[i]))
+        yrs.append(d.year)
+    out = {"years": yrs}
+    if len(pes) >= 2 and pe_now and pe_now > 0:
+        med = float(np.median(pes))
+        out.update({"pe_med": r(med, 1), "pe_min": r(min(pes), 1), "pe_max": r(max(pes), 1), "pe_own": r(pe_now / med - 1, 4)})
+    if len(pss) >= 2 and ps_now and ps_now > 0:
+        med = float(np.median(pss))
+        out.update({"ps_med": r(med, 2), "ps_own": r(ps_now / med - 1, 4)})
+    return out if len(out) > 1 else None
+
+
+def next_exdiv(info):
+    """Tanggal ex-dividend berikutnya; bila Yahoo hanya punya tanggal lalu, diperkirakan dari frekuensi kuartalan."""
+    rate = sf(info.get("dividendRate")) or 0
+    ts = info.get("exDividendDate")
+    if not rate or not isinstance(ts, (int, float)):
+        return None, False
+    now = time.time()
+    if ts >= now - 86400:
+        return int(ts), False
+    last = sf(info.get("lastDividendValue")) or 0
+    per = int(round(rate / last)) if last else 4
+    step = 86400 * (365 / max(1, min(12, per)))
+    t = ts
+    while t < now - 86400:
+        t += step
+    return int(t), True
+
+
 # ----------------------------------------------------------------------------- universe
 def get_universe(args):
     if args.tickers:
@@ -179,6 +269,11 @@ def get_universe(args):
     except Exception as e:
         log(f"Gagal ambil daftar S&P 500 ({e}); pakai daftar cadangan.")
         syms = list(FALLBACK)
+    if not getattr(args, "tanpa_midcap", False):
+        mid = sp400()
+        if mid:
+            log(f"Universe S&P MidCap 400: {len(mid)} saham")
+            syms += [m for m in mid if m not in syms]
     for t in EXTRAS:
         if t not in syms:
             syms.append(t)
@@ -476,7 +571,7 @@ def quarterly(qinc, qcf):
         return None
 
 
-def compute_fund(info, inc, bal, cf, qinc=None, qcf=None):
+def compute_fund(info, inc, bal, cf, qinc=None, qcf=None, mclose=None):
     f = {}
     sector = info.get("sector") or "Lainnya"
     is_fin = sector == "Financial Services" and (info.get("industry") or "").find("Insurance") < 0
@@ -626,6 +721,10 @@ def compute_fund(info, inc, bal, cf, qinc=None, qcf=None):
     f["cash"], f["debt"] = cash, debt
     f["shares"] = shares
     f["bvps"] = sf(info.get("bookValue"))
+    ov = own_valuation(inc, mclose, f.get("pe_ttm"), f.get("ps"))
+    f["own"] = ov
+    f["pe_own"] = ov.get("pe_own") if ov else None
+    f["ps_own"] = ov.get("ps_own") if ov else None
 
     years = []
     if inc is not None and not inc.empty:
@@ -664,6 +763,7 @@ PILLARS = {
         ("peg", 3.0, 0.8, 1.0, 0.8),
         ("ebitda_ev", 0.03, 0.12, 1.0, 0.0),
         ("fcf_yield", 0.00, 0.08, 1.3, 0.0),
+        ("pe_own", 0.60, -0.35, 0.8, 0.8),
         ("ps", 15.0, 1.5, 0.4, 0.0),
         ("pb", 10.0, 1.2, 0.3, 1.5),
     ],
@@ -1046,6 +1146,28 @@ def build_reasons(rec, medians):
         C(60, f"Payout ratio {pct(f['payout'])} — dividen melebihi laba, keberlanjutan perlu dicermati.",
           "Pemegang Saham")
 
+    ins = (rec.get("est") or {}).get("ins")
+    if ins:
+        b90 = ins.get("buy90") or {}
+        s90 = ins.get("sell90") or {}
+        if b90.get("n", 0) >= 2 and (b90.get("val") or 0) >= 100_000:
+            P(66 + min(b90["n"], 5) * 3, f"Orang dalam membeli di pasar terbuka: {b90['n']} orang, {money(b90['val'])} dalam 90 hari "
+                                         f"terakhir — sinyal keyakinan manajemen.", "Orang Dalam")
+        elif b90.get("n", 0) == 1 and (b90.get("val") or 0) >= 250_000:
+            P(55, f"{b90.get('who', 'Seorang pejabat')} membeli saham {money(b90['val'])} di pasar terbuka (90 hari).", "Orang Dalam")
+        net = ins.get("net_pct")
+        if net is not None and net <= -0.10 and (s90.get("val") or 0) >= 1_000_000:
+            C(50 + min(-net, 0.5) * 40, f"Orang dalam menjual bersih {pct(-net)} kepemilikannya dalam 6 bulan "
+                                       f"({money(s90['val'])} dalam 90 hari).", "Orang Dalam")
+    ow = rec["f"].get("own")
+    if ow and ow.get("pe_own") is not None and ow.get("pe_med"):
+        po = ow["pe_own"]
+        if po <= -0.20 and rec["fund"] >= 55:
+            P(54 + min(-po, 0.5) * 40, f"P/E {rec['f']['pe_ttm']:.1f}x — {pct(-po)} di bawah median P/E-nya sendiri "
+                                      f"{len(ow['years'])} tahun terakhir ({ow['pe_med']:.1f}x).", "Valuasi Historis")
+        elif po >= 0.50:
+            C(48 + min(po, 1.0) * 20, f"P/E {rec['f']['pe_ttm']:.1f}x — {pct(po)} di atas median P/E-nya sendiri "
+                                     f"({ow['pe_med']:.1f}x); valuasi sudah mahal dibanding biasanya.", "Valuasi Historis")
     qd = rec["f"].get("qtr")
     if qd:
         y0, y1, ac = qd.get("rev_yoy"), qd.get("rev_yoy_prev"), qd.get("accel")
@@ -1180,6 +1302,7 @@ def main():
     ap.add_argument("--tickers", help="daftar ticker dipisah koma")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--tanpa-midcap", action="store_true", help="hanya S&P 500 + daftar tambahan")
     args = ap.parse_args()
 
     t0 = time.time()
@@ -1220,6 +1343,9 @@ def main():
                     raw[s] = data
         log(f"  berhasil total: {len(raw)}")
 
+    log("  Mengunduh harga bulanan 5 tahun (valuasi vs riwayat sendiri)...")
+    mprices = fetch_monthly(list(raw.keys()))
+    log(f"  bulanan: {len(mprices)}/{len(raw)}")
     log("3/4 Menghitung metrik...")
     records = []
     for s, (info, inc, bal, cf, qinc, qcf) in raw.items():
@@ -1235,7 +1361,7 @@ def main():
             if ip:
                 t["price"] = ip
                 t["dist_high"] = ip / t["high52"] - 1
-            f = compute_fund(info, inc, bal, cf, qinc, qcf)
+            f = compute_fund(info, inc, bal, cf, qinc, qcf, mprices.get(s))
             sector = info.get("sector") or "Lainnya"
             records.append({
                 "sym": s, "name": info.get("shortName") or info.get("longName") or s,
@@ -1247,6 +1373,8 @@ def main():
                 "country": info.get("country") or "",
                 "website": info.get("website") or "",
                 "earnings_ts": next_earnings(info),
+                "exdiv": next_exdiv(info),
+                "div_rate": sf(info.get("dividendRate")),
                 "earnings_est": bool(info.get("isEarningsDateEstimate")),
                 "earnings_last": info.get("earningsTimestamp"),
                 "f": f, "t": t,
@@ -1296,13 +1424,34 @@ def main():
     for rec in records:
         rec["est"] = ests.get(rec["sym"])
         rec["rev"] = makro.revision_score(rec["est"])
+        ins = (rec["est"] or {}).get("ins")
+        rec["ins_score"] = makro.insider_score(ins, rec.get("mcap"))
+        parts = [(rec["analyst"], 0.5)]
         if rec["rev"] is not None:
-            rec["analyst"] = round(0.6 * rec["analyst"] + 0.4 * rec["rev"], 1)
+            parts.append((rec["rev"], 0.3))
+        if rec["ins_score"] is not None:
+            parts.append((rec["ins_score"], 0.2))
+        tw = sum(w for _, w in parts)
+        rec["analyst"] = round(sum(v * w for v, w in parts) / tw, 1)
 
     # ---- geopolitik (berita perusahaan untuk ~180 saham teratas sementara)
     geo_payload = geopolitik.build(records, prices, spy_close, [x["sym"] for x in prelim[:180]],
                                    workers=args.workers, log=log)
     geo_int = {t["key"]: t["intensity"] for t in geo_payload["themes"]}
+    if not args.tickers:
+        try:
+            import berita
+            cand = [x["sym"] for x in prelim if x["score"] >= 58][:140]
+            names = {x["sym"]: x["name"] for x in records}
+            items = berita.collect(cand, market=True, hours=48, min_stock=40, min_market=50, names=names)
+            for it in items:
+                it.pop("summary", None)
+            with open(os.path.join(OUT_DIR, "berita.json"), "w", encoding="utf-8") as fh:
+                json.dump({"generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                           "items": items[:120], "scanned": len(cand)}, fh, ensure_ascii=False, separators=(",", ":"))
+            log(f"  berita penting: {len(items)} dari {len(cand)} saham + pasar")
+        except Exception as e:  # noqa: BLE001
+            log(f"  berita penting gagal: {e}")
     for rec in records:
         rec["geo_int"] = geo_int
         rec["score"] = round(0.65 * rec["fund"] + 0.20 * rec["tech"] + 0.10 * rec["analyst"]
@@ -1399,6 +1548,9 @@ def main():
             },
             "summary": rec["summary"], "website": rec["website"], "earnings_ts": rec["earnings_ts"],
             "earnings_est": rec.get("earnings_est"), "earnings_last": rec.get("earnings_last"),
+            "exdiv_ts": (rec.get("exdiv") or (None, False))[0], "exdiv_est": (rec.get("exdiv") or (None, False))[1],
+            "div_rate": rec.get("div_rate"),
+            "own": rec["f"].get("own"), "ins": (rec.get("est") or {}).get("ins"),
         })
 
     # ringkasan sektor
