@@ -64,12 +64,15 @@ Detail lengkap ada di halaman **Metodologi** di aplikasi.
 
 > Bukan nasihat investasi. Proyeksi adalah estimasi model dan bisa meleset.
 
-## Pesan, notifikasi push & sinkronisasi cloud
+## Notifikasi via Kabar
 
-Tab **Pesan** berisi Radar Bot (bergaya chat): ketik ticker atau perintah (`/top`, `/makro`, `/berita`, `/laporan`,
-`/alert NVDA >200`). Ringkasan pagi, alert harga, dan berita penting dari server masuk ke kotak masuk ini dan
-muncul sebagai **notifikasi push** di HP/laptop (Web Push, perlu secret `VAPID_PRIVATE_KEY` + `GIST_TOKEN`).
-Telegram tetap didukung sebagai saluran tambahan (opsional).
+Alert harga, berita sangat penting, dan ringkasan pagi dikirim ke **[Kabar](https://github.com/GabFx09/kabar)** —
+aplikasi kotak pesan terpisah (bisa dipakai juga untuk notifikasi lain) — di saluran "Radar Saham", lengkap dengan
+notifikasi push di HP. Secret repo yang dibutuhkan: `KABAR_TOKEN`, `KABAR_VAPID`, dan `GIST_TOKEN` (watchlist & alert
+dari aplikasi). `scripts/kabar.py` adalah salinan pustaka pengirim dari repo Kabar.
+
+Tab **Pesan** di aplikasi ini berisi Radar Bot: ketik ticker atau perintah (`/top`, `/makro`, `/berita`, `/laporan`,
+`/alert NVDA >200`).
 
 ### Telegram (opsional)
 

@@ -26,13 +26,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "docs", "data")
 GIST_FILE = "radar-saham.json"
-INBOX_FILE = "radar-saham-inbox.json"
 STATE_FILE = "radar-saham-state.json"
 TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 CHAT = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 GTOKEN = os.getenv("GIST_TOKEN", "").strip()
-VAPID = os.getenv("VAPID_PRIVATE_KEY", "").strip()
-CTX = {"gid": None, "state": {}, "inbox": {"messages": []}, "cfg": {}}
+# Kabar (https://github.com/GabFx09/kabar): token gist yang sama boleh dipakai untuk keduanya
+KTOKEN = (os.getenv("KABAR_TOKEN") or os.getenv("GIST_TOKEN") or "").strip()
+KVAPID = os.getenv("KABAR_VAPID", "").strip()
+KABAR_CHANNEL = os.getenv("KABAR_SALURAN", "Radar Saham")
+CTX = {"gid": None, "state": {}, "cfg": {}}
 OUTBOX = []
 repo = os.getenv("GITHUB_REPOSITORY", "GabFx09/radar-saham-us")
 SITE = os.getenv("SITE_URL") or f"https://{repo.split('/')[0].lower()}.github.io/{repo.split('/')[1]}/"
@@ -128,68 +130,31 @@ def plain(htm):
     return html.unescape(t)
 
 
-def deliver(kind, title, lines, url=None, sym=None):
-    """Kirim satu pesan ke semua saluran: kotak masuk aplikasi (gist), notifikasi push, dan Telegram (opsional)."""
+def deliver(kind, title, lines, url=None, sym=None, prio="normal"):
+    """Antrekan satu pesan: dikirim ke aplikasi Kabar (saluran "Radar Saham") + Telegram (opsional)."""
     body = "\n".join(lines).strip()
     tg = send(f"<b>{title}</b>\n{body}")
-    OUTBOX.append({"id": f"{int(time.time() * 1000)}{len(OUTBOX)}", "t": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
-                   "kind": kind, "title": plain(title), "html": body, "url": url, "sym": sym})
+    OUTBOX.append({"judul": plain(title), "html": body, "url": url, "prioritas": prio})
     log(f"[{kind}] {plain(title)} — telegram={'ya' if tg else 'tidak'}")
 
 
-def push_all(cfg, state):
-    subs = [x for x in (cfg.get("push") or []) if x.get("endpoint")]
-    if not subs or not VAPID or not OUTBOX:
-        if subs and not VAPID:
-            log("VAPID_PRIVATE_KEY belum diatur — notifikasi push dilewati.")
-        return
-    try:
-        from pywebpush import WebPushException, webpush
-    except ImportError:
-        log("pywebpush tidak terpasang")
-        return
-    dead = set(state.get("dead_push") or [])
-    last = OUTBOX[-1]
-    title = last["title"] if len(OUTBOX) == 1 else f"{len(OUTBOX)} pesan baru · Radar Saham"
-    body = plain(last["html"]).replace("\n", " · ")[:180] if len(OUTBOX) == 1 else \
-        " · ".join(m["title"] for m in OUTBOX)[:180]
-    payload = json.dumps({"title": title, "body": body, "url": SITE + "#/pesan", "tag": last["kind"]})
-    for sub in subs:
-        if sub["endpoint"] in dead:
-            continue
-        try:
-            webpush(subscription_info={"endpoint": sub["endpoint"], "keys": sub.get("keys", {})}, data=payload,
-                    vapid_private_key=VAPID, vapid_claims={"sub": SITE.rstrip("/")}, ttl=86400)
-            log("push terkirim ke " + sub.get("ua", "perangkat"))
-        except WebPushException as e:
-            code = getattr(e.response, "status_code", None)
-            log(f"push gagal ({code}): {str(e)[:120]}")
-            if code in (404, 410):
-                dead.add(sub["endpoint"])
-        except Exception as e:  # noqa: BLE001
-            log(f"push gagal: {e}")
-    state["dead_push"] = sorted(dead)[-50:]
-
-
 def flush():
-    """Simpan pesan ke kotak masuk gist + status, lalu kirim notifikasi push."""
-    gid, state, cfg = CTX["gid"], CTX["state"], CTX["cfg"]
+    """Kirim antrean ke Kabar (kotak pesan + notifikasi push) dan simpan status anti-duplikat ke gist Radar."""
+    gid, state = CTX["gid"], CTX["state"]
     if OUTBOX:
-        push_all(cfg, state)
-    if not gid:
-        if OUTBOX and not TOKEN:
-            log("Tidak ada saluran aktif (GIST_TOKEN / TELEGRAM_TOKEN). Pesan:\n" + "\n".join(m["title"] for m in OUTBOX))
-        return
-    files = {STATE_FILE: {"content": json.dumps(state, indent=1)}}
-    if OUTBOX:
-        inbox = CTX["inbox"] or {"messages": []}
-        inbox["messages"] = (inbox.get("messages") or []) + OUTBOX
-        inbox["messages"] = inbox["messages"][-300:]
-        inbox["updated"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
-        files[INBOX_FILE] = {"content": json.dumps(inbox, ensure_ascii=False, indent=0)}
-    r = gh("PATCH", f"/gists/{gid}", json={"files": files})
-    if not r.ok:
-        log(f"Gist gagal ditulis: {r.status_code} {r.text[:150]}")
+        if KTOKEN:
+            try:
+                import kabar
+                kabar.kirim_banyak(list(OUTBOX), saluran=KABAR_CHANNEL, token=KTOKEN, vapid=KVAPID)
+                log(f"{len(OUTBOX)} pesan terkirim ke Kabar ({'dengan' if KVAPID else 'tanpa'} notifikasi push).")
+            except Exception as e:  # noqa: BLE001
+                log(f"Kabar gagal: {e}")
+        elif not TOKEN:
+            log("Tidak ada saluran aktif (KABAR_TOKEN / TELEGRAM_TOKEN). Pesan:\n" + "\n".join(m["judul"] for m in OUTBOX))
+    if gid:
+        r = gh("PATCH", f"/gists/{gid}", json={"files": {STATE_FILE: {"content": json.dumps(state, indent=1)}}})
+        if not r.ok:
+            log(f"Gist gagal ditulis: {r.status_code} {r.text[:150]}")
     OUTBOX.clear()
 
 
@@ -232,15 +197,15 @@ def gist_read(gid):
             return json.loads(content or "{}")
         except ValueError:
             return {}
-    return load(GIST_FILE), load(STATE_FILE), load(INBOX_FILE)
+    return load(GIST_FILE), load(STATE_FILE)
 
 
 def user_config():
     gid = gist_find()
-    cfg, state, inbox = ({}, {}, {"messages": []})
+    cfg, state = ({}, {})
     if gid:
         try:
-            cfg, state, inbox = gist_read(gid)
+            cfg, state = gist_read(gid)
         except Exception as e:  # noqa: BLE001
             log(f"Gist gagal dibaca: {e}")
     if not cfg.get("watchlist") and os.getenv("WATCHLIST"):
@@ -248,7 +213,7 @@ def user_config():
     cfg.setdefault("watchlist", [])
     cfg.setdefault("alerts", {})
     cfg.setdefault("settings", {})
-    CTX.update({"gid": gid, "state": state, "inbox": inbox or {"messages": []}, "cfg": cfg})
+    CTX.update({"gid": gid, "state": state, "cfg": cfg})
     return gid, cfg, state
 
 
@@ -385,7 +350,8 @@ def alerts():
         fresh = important_news(cfg, state, hours=6, today=today)
         if fresh:
             for n in fresh:
-                deliver("news", f"📰 {n['sym'] or 'Pasar'}: {', '.join(n['cats'])}", news_lines([n]), n["url"], n["sym"])
+                deliver("news", f"📰 {n['sym'] or 'Pasar'}: {', '.join(n['cats'])}", news_lines([n]), n["url"], n["sym"],
+                        prio="tinggi" if n["score"] >= 65 else "normal")
             log(f"{len(fresh)} berita penting terkirim.")
         else:
             log("Tidak ada berita penting baru.")
@@ -439,7 +405,7 @@ def alerts():
             sent[key] = today
             msgs.append(text)
     if msgs:
-        deliver("alert", "⚡ Alert harga", msgs, SITE)
+        deliver("alert", "⚡ Alert harga", msgs, SITE, prio="tinggi" if any("🛑" in m for m in msgs) else "normal")
         log(f"{len(msgs)} alert terkirim.")
     else:
         log("Tidak ada alert baru.")

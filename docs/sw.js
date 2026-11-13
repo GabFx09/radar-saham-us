@@ -1,5 +1,5 @@
 /* Service worker: app shell cache-first, data network-first (fallback cache saat offline) */
-const VERSION = 'v8';
+const VERSION = 'v9';
 const SHELL = `shell-${VERSION}`;
 const DATA = 'data-v1';
 const ASSETS = ['./', 'index.html', 'app.css', 'app.js', 'geo.js', 'quant.js', 'siklus.js', 'term.js', 'makro.js', 'ext.js', 'pesan.js', 'terminal.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];

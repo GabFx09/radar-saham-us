@@ -251,7 +251,20 @@ function renderSettings(el) {
     </div>
 
     <div class="card card-pad">
-      <h3 class="card-title">Notifikasi Telegram</h3>
+      <h3 class="card-title">Notifikasi via Kabar (disarankan)</h3>
+      <p class="small muted" style="margin-top:0"><a class="link" href="https://gabfx09.github.io/kabar/" target="_blank" rel="noopener">Kabar ↗</a> adalah aplikasi kotak pesan terpisah milik Anda — bisa dipakai juga untuk notifikasi dari skrip &amp; aplikasi lain. Radar Saham mengirim ke saluran <b>"Radar Saham"</b>: ringkasan pagi, alert harga, dan berita sangat penting.</p>
+      <ol class="small steps">
+        <li>Buka <a class="link" href="https://gabfx09.github.io/kabar/" target="_blank" rel="noopener">Kabar</a>, masuk dengan token GitHub (scope gist) — boleh token yang sama dengan sinkronisasi di atas — lalu <b>Setelan → Aktifkan notifikasi</b> di HP.</li>
+        <li>Simpan secret repo di <a class="link" href="https://github.com/${esc(slug)}/settings/secrets/actions" target="_blank" rel="noopener">GitHub → Secrets ↗</a>:
+          <pre class="code">KABAR_TOKEN = token GitHub (scope gist)
+KABAR_VAPID = kunci privat notifikasi Kabar
+GIST_TOKEN  = token yang sama (membaca watchlist &amp; alert dari aplikasi ini)</pre></li>
+        <li>Uji: <a class="link" href="https://github.com/${esc(slug)}/actions/workflows/alerts.yml" target="_blank" rel="noopener">Actions → Alert harga &amp; berita penting → Run workflow ↗</a> dengan mode <code>test</code>.</li>
+      </ol>
+    </div>
+
+    <div class="card card-pad">
+      <h3 class="card-title">Notifikasi Telegram (opsional)</h3>
       <p class="small muted" style="margin-top:0">Ringkasan pagi setelah update data (watchlist, perubahan rekomendasi, laporan keuangan, berita penting 24 jam) + alert harga tiap 30 menit saat bursa AS buka + <b>berita sangat penting</b> dicek tiap 30 menit sepanjang hari.</p>
       <ol class="small steps">
         <li>Di Telegram, chat <a class="link" href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather ↗</a> → <code>/newbot</code> → beri nama → salin <b>token bot</b>.</li>

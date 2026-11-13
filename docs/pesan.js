@@ -223,10 +223,10 @@ function renderPesan(el) {
     <div class="chat-head">
       <div class="avatar">RB</div>
       <div style="min-width:0;flex:1"><b>Radar Bot</b> <span class="verified">✓</span>
-        <div class="small faint">${cloudOk ? `☁ tersinkron · ${App.inbox.length} pesan server` : 'mode lokal — hubungkan cloud untuk alert & berita'}</div></div>
-      <button class="btn ${ps === 'granted' && App.pushSubs.some((x) => x.endpoint === store.get('myEndpoint', '')) ? 'on' : ''}" id="pushBtn">${ps === 'granted' && App.pushSubs.some((x) => x.endpoint === store.get('myEndpoint', '')) ? '🔔 Notifikasi aktif' : '🔔 Aktifkan notifikasi'}</button>
+        <div class="small faint">${cloudOk ? '☁ watchlist tersinkron' : 'tanya saham, pasar &amp; ringkasan harian'}</div></div>
+      <a class="btn" href="https://gabfx09.github.io/kabar/" target="_blank" rel="noopener" title="Alert & berita dikirim ke aplikasi Kabar">🔔 Notifikasi di Kabar ↗</a>
     </div>
-    ${!cloudOk ? `<div class="chat-tip">Saat ini Radar Bot bisa menjawab pertanyaan dan menampilkan ringkasan harian. Agar <b>alert harga &amp; berita penting dikirim otomatis</b> (juga saat aplikasi tertutup), <a class="link" href="#/pengaturan">hubungkan sinkronisasi cloud</a> sekali saja.</div>` : ''}
+    <div class="chat-tip">Alert harga, berita penting &amp; ringkasan pagi kini dikirim ke aplikasi terpisah <a class="link" href="https://gabfx09.github.io/kabar/" target="_blank" rel="noopener">Kabar ↗</a> (saluran "Radar Saham") lengkap dengan notifikasi HP. Di sini Anda bisa bertanya ke Radar Bot.</div>
     <div class="chat-list" id="chatList">${html || '<div class="empty small">Belum ada pesan.</div>'}</div>
     <div class="chat-chips">${['/ringkasan', '/top', '/makro', '/berita', '/watchlist', '/laporan', '/naik', '/turun', '/bantuan'].map((c) => `<button class="chip" data-q="${c}">${c}</button>`).join('')}</div>
     <form class="chat-input" id="chatForm" autocomplete="off">
@@ -255,10 +255,7 @@ function renderPesan(el) {
   $('#chatForm').onsubmit = (e) => { e.preventDefault(); const v = $('#chatIn').value; $('#chatIn').value = ''; ask(v); };
   $$('.chat-chips [data-q]').forEach((b) => { b.onclick = () => ask(b.dataset.q); });
   $('#pushBtn').onclick = enablePush;
-  if (cloudOk && Date.now() - (App._inboxPulled || 0) > 30000) {
-    App._inboxPulled = Date.now();
-    pullInbox().then((ch) => { if (ch && parseHash().parts[0] === 'pesan') renderPesan(el); }).catch(() => {});
-  }
+
 }
 
 /* ------------------------------------------------------------ notifikasi push */
@@ -307,13 +304,10 @@ async function enablePush() {
     if (!App.data) return;
     clearInterval(wait);
     updateBadge();
-    if (App.cloud && App.cloud.gistId) pullInbox().then((ch) => { if (ch && (parseHash().parts[0] || 'home') === 'pesan') render(); }).catch(() => {});
+
   }, 300);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && App.data && App.cloud && App.cloud.gistId && Date.now() - (App._inboxPulled || 0) > 60000) {
-      App._inboxPulled = Date.now();
-      pullInbox().then((ch) => { if (ch && parseHash().parts[0] === 'pesan') render(); }).catch(() => {});
-    }
+
   });
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (e) => {
