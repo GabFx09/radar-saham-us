@@ -132,7 +132,7 @@ async function renderMakro(el) {
         bands: (cv.recessions || []).map(([a, b]) => [a, b, 'var(--down)', 0.28]) })}
       <div class="cmp-scroll" style="margin-top:10px"><table class="hold-table"><tr><th>Resesi</th><th>Inversi pertama</th><th class="r">Jeda</th></tr>
         ${(cv.leads || []).map((l) => `<tr><td class="mono">${l.rec}</td><td class="mono">${l.inv || '<span class="faint">tidak didahului</span>'}</td><td class="r mono">${l.lead != null ? l.lead + ' bln' : '–'}</td></tr>`).join('')}</table></div>
-      <p class="small faint" style="margin:8px 0 0">${leads.length} dari ${(cv.leads || []).length} resesi sejak 1969 didahului inversi (rata-rata ${avgLead} bulan sebelumnya)${cv.false_pos && cv.false_pos.length ? `; inversi tanpa resesi: ${cv.false_pos.join(', ')}` : ''}. Sumber: ^TNX &amp; ^IRX (Yahoo Finance), tanggal resesi NBER.</p>` : ''}
+      <p class="small faint" style="margin:8px 0 0">${leads.length} dari ${(cv.leads || []).length} resesi sejak 1969 didahului inversi (rata-rata ${avgLead} bulan sebelumnya)${cv.false_pos && cv.false_pos.length ? `; inversi yang tidak diikuti resesi dalam 30 bulan: ${cv.false_pos.join(', ')}` : ''}. Sumber: ^TNX &amp; ^IRX (Yahoo Finance), tanggal resesi NBER.</p>` : ''}
     </div>`;
   }
 
@@ -164,15 +164,17 @@ async function renderMakro(el) {
           <text x="${(X(last[0]) + 8).toFixed(1)}" y="${(Y(last[1]) + 4).toFixed(1)}" class="fc-lbl" style="fill:var(--text)">${esc(r.sym)}</text>`; }).join('')}
     </svg>`;
     const sorted = [...rot].sort((a, b) => (b.m3 ?? -9) - (a.m3 ?? -9));
-    rotHtml = `<div class="card card-pad">
+    rotHtml = `<div class="grid-2"><div class="card card-pad">
       <h3 class="card-title">Rotasi Sektor (Relative Rotation Graph)</h3>
       <p class="small muted" style="margin:-4px 0 8px">Ekor = jejak 6 minggu terakhir. Sektor biasanya berputar searah jarum jam: Membaik → Memimpin → Melemah → Tertinggal.</p>
-      ${svg}
-      <div class="cmp-scroll" style="margin-top:8px"><table class="xa-table">
+      ${svg}</div>
+      <div class="card card-pad"><h3 class="card-title">Kinerja ETF Sektor</h3>
+      <div class="cmp-scroll"><table class="xa-table">
         <tr><th>Sektor</th><th>Kuadran</th><th>1M</th><th>1B</th><th>3B</th><th class="hm">YTD</th><th class="hm">1T</th><th>vs SPY 3B</th></tr>
         ${sorted.map((r) => `<tr><td class="nm"><b>${esc(r.name)}</b><small>${esc(r.sym)}</small></td><td style="color:${qc[r.quad]};font-weight:700">${esc(r.quad)}</td><td class="${cls(r.w1)}">${fmt.pct(r.w1, 1)}</td><td class="${cls(r.m1)}">${fmt.pct(r.m1, 1)}</td><td class="${cls(r.m3)}">${fmt.pct(r.m3, 1)}</td><td class="hm ${cls(r.ytd)}">${fmt.pct(r.ytd, 0)}</td><td class="hm ${cls(r.y1)}">${fmt.pct(r.y1, 0)}</td><td class="${cls(r.rs3m)}">${fmt.pct(r.rs3m, 1)}</td></tr>`).join('')}
       </table></div>
-    </div>`;
+      <p class="small faint" style="margin:8px 0 0">Diurutkan menurut kinerja 3 bulan. "vs SPY 3B" = selisih return terhadap S&amp;P 500.</p>
+    </div></div>`;
   }
 
   el.innerHTML = `<div class="fade-in">

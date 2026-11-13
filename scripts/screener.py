@@ -1174,6 +1174,16 @@ def main():
         for sym_, e in ex.map(makro.fetch_estimates, est_syms):
             if e:
                 ests[sym_] = e
+    for rnd in (1, 2):
+        miss = [x for x in est_syms if x not in ests]
+        if len(miss) < 5:
+            break
+        log(f"  ulang estimasi {len(miss)} saham (putaran {rnd})...")
+        time.sleep(15 * rnd)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            for sym_, e in ex.map(makro.fetch_estimates, miss):
+                if e:
+                    ests[sym_] = e
     log(f"  estimasi: {len(ests)}/{len(est_syms)}")
     for rec in records:
         rec["est"] = ests.get(rec["sym"])
