@@ -105,6 +105,19 @@ def _plain(htm):
     return H.unescape(re.sub(r"<[^>]+>", "", htm or ""))
 
 
+def _quiet_now(q):
+    """True bila sekarang berada di jam tenang pengguna (diatur di Setelan aplikasi)."""
+    if not q or not q.get("on"):
+        return False
+    try:
+        from zoneinfo import ZoneInfo
+        h = dt.datetime.now(ZoneInfo(q.get("tz") or "UTC")).hour
+    except Exception:  # noqa: BLE001
+        h = dt.datetime.now(dt.timezone.utc).hour
+    a, b = int(q.get("from", 22)), int(q.get("to", 6))
+    return (a <= h < b) if a < b else (h >= a or h < b)
+
+
 def _origin(url):
     """Klaim VAPID "sub" harus mailto: atau URL https tanpa path."""
     from urllib.parse import urlparse
@@ -125,6 +138,9 @@ def _push(cfg, msgs, saluran, vapid, app_url):
     ch = (cfg.get("channels") or {}).get(saluran) or {}
     urgent = any(m.get("prio") == "tinggi" for m in msgs)
     if ch.get("mute") and not urgent:
+        return set()
+    if _quiet_now(cfg.get("quiet")) and not urgent:
+        print("kabar: jam tenang — pesan disimpan tanpa notifikasi", file=sys.stderr)
         return set()
     last = msgs[-1]
     if len(msgs) == 1:
