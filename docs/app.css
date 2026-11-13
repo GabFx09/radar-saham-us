@@ -549,4 +549,25 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .cmp-h { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 16px; font-weight: 800; }
 .cmp-h i { width: 10px; height: 10px; border-radius: 50%; }
 .cmp-x { border: 0; background: var(--surface-2); color: var(--text-2); width: 22px; height: 22px; border-radius: 50%; font-size: 15px; line-height: 1; cursor: pointer; }
+/* ---- siklus pasar */
+.cyc-now { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 700px) { .cyc-now { grid-template-columns: repeat(4, 1fr); } }
+.cyc-now > div { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.cyc-now .l { font-size: 11.5px; color: var(--text-2); font-weight: 600; }
+.cyc-now .v { font-family: var(--mono); font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
+.cyc-now .s { font-size: 11px; color: var(--text-3); }
+.cyc-sig { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 10px; }
+.cyc-sig li { display: grid; grid-template-columns: 10px 1fr; gap: 10px; font-size: 13.5px; line-height: 1.55; color: var(--text-2); }
+.cyc-sig li b { color: var(--text); }
+.cyc-sig li > span { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
+.cyc-sig li.ok > span { background: var(--up); }
+.cyc-sig li.warn > span { background: var(--warn); }
+.cyc-sig li.bad > span { background: var(--down); }
+.regime-strip { display: flex; height: 26px; border-radius: 8px; overflow: hidden; gap: 1px; background: var(--border); }
+.regime-strip i { display: block; min-width: 1px; }
+.regime-strip i.bull { background: var(--up); opacity: .75; }
+.regime-strip i.bear { background: var(--down); opacity: .85; }
+.regime-strip i.now { opacity: 1; box-shadow: inset 0 0 0 2px var(--text); }
+.cyc-callout { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--up-bg); font-size: 13.5px; line-height: 1.55; }
+.hold-table tr.base td { background: var(--surface-2); }
 .cmp-n { font-size: 11px; color: var(--text-3); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; margin: 2px auto 4px; }

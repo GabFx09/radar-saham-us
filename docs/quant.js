@@ -488,6 +488,7 @@ async function renderStrategi(el) {
     <section class="section">${earningsHtml(30)}</section>
     <section class="section grid-2">
       <a class="card card-pad link-card" href="#/bandingkan"><span class="ico-lg">⚖️</span><div><b>Bandingkan Saham</b><div class="small muted">Adu 2–4 saham berdampingan</div></div><span class="faint">›</span></a>
+      <a class="card card-pad link-card" href="#/siklus"><span class="ico-lg">🔄</span><div><b>Siklus Pasar 100 Tahun</b><div class="small muted">Bull/bear, siklus presiden, musiman</div></div><span class="faint">›</span></a>
       <a class="card card-pad link-card" href="#/metode"><span class="ico-lg">📐</span><div><b>Metodologi</b><div class="small muted">Cara skor, proyeksi &amp; simulasi dihitung</div></div><span class="faint">›</span></a>
     </section>
     <p class="disclaimer">Model portofolio adalah ilustrasi kuantitatif, bukan saran alokasi personal. Sesuaikan dengan tujuan, jangka waktu, dan toleransi risiko Anda.</p>

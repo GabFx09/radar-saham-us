@@ -158,7 +158,7 @@ function render() {
   const view = parts[0] || 'home';
   const key = parts.join('/');
   const el = $('#app');
-  $$('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === (view === 's' ? '' : view === 'bandingkan' ? 'strategi' : view)));
+  $$('[data-nav]').forEach((a) => a.classList.toggle('active', (a.dataset.nav === (view === 's' ? '' : view) || (a.closest('.bottomnav') && a.dataset.nav === 'strategi' && (view === 'bandingkan' || view === 'siklus')))));
   if (view === 'home') renderHome(el);
   else if (view === 'screener') {
     if (query.get('p')) {
@@ -175,6 +175,7 @@ function render() {
   else if (view === 'geo') renderGeo(el);
   else if (view === 'strategi') renderStrategi(el);
   else if (view === 'bandingkan') renderCompare(el, query);
+  else if (view === 'siklus') renderSiklus(el);
   else renderHome(el);
   updateCmpBar();
   currentKey = key;
@@ -263,6 +264,7 @@ function renderHome(el) {
     </section>
 
     ${strategiHomeCard()}
+    ${siklusHomeCard()}
     ${geoHomeCard()}
     <section class="section grid-2">${themed}</section>
 
@@ -892,7 +894,10 @@ function renderMethod(el) {
     <p><b>Model portofolio</b> — optimasi mean-variance (maksimalkan return harapan − λ/2 × varians) atas saham Buy/Strong Buy dengan batas bobot per saham &amp; per sektor. Matriks kovarians dari return harian 1 tahun dengan <i>shrinkage</i> 50% ke korelasi konstan agar stabil. Tiga profil: Konservatif (λ 9, maks. 8%/saham), Seimbang (λ 4, 10%), Agresif (λ 1,6, 14%).</p>
     <p><b>Rekam jejak</b> — setiap update menyimpan daftar Strong Buy, Buy, dan Hindari beserta harganya. Kinerjanya dilacak terhadap S&amp;P 500 apa adanya, tanpa dipilih-pilih, supaya Anda bisa menilai seberapa andal model ini dari waktu ke waktu.</p>
 
-    <h2>7. Data</h2>
+    <h2>7. Siklus Pasar 100 Tahun</h2>
+    <p>Data harian S&amp;P 500 sejak 1927. Bull/bear market memakai aturan 20% (naik/turun ≥20% dari titik ekstrem). Siklus presiden mengelompokkan return tahunan menurut tahun masa jabatan; musiman memakai return bulanan; mean reversion membandingkan deviasi harga dari tren eksponensial 100 tahun dengan return 10 tahun berikutnya. Analisis spektral (FFT berjendela Hann) diuji terhadap 300 simulasi red noise AR(1) untuk melihat apakah ada siklus berperiode tetap yang signifikan.</p>
+
+    <h2>8. Data</h2>
     <p>Harga, rasio, dan laporan keuangan tahunan dari Yahoo Finance; universe = seluruh konstituen S&amp;P 500 ditambah saham growth populer. Data diperbarui otomatis setiap hari bursa setelah pasar tutup (bila di-deploy dengan GitHub Actions).</p>
 
     <p class="disclaimer"><b>Penafian:</b> Aplikasi ini adalah alat bantu riset, bukan nasihat investasi. Model kuantitatif memiliki keterbatasan — misalnya laba siklikal di puncak siklus bisa membuat saham tampak murah, dan data pihak ketiga bisa keliru atau terlambat. Kinerja masa lalu tidak menjamin hasil di masa depan. Selalu lakukan riset mandiri.</p>

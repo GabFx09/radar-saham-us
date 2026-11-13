@@ -34,6 +34,7 @@ import yfinance as yf
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import geopolitik  # noqa: E402
 import quant  # noqa: E402
+import siklus  # noqa: E402
 import zlib  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1277,6 +1278,13 @@ def main():
                                                     spy_t["price"] if spy_t else None, prices)
         except Exception as e:
             log(f"  rekam jejak gagal: {e}")
+    if not args.tickers:
+        try:
+            cyc = siklus.build(log=log)
+            with open(os.path.join(OUT_DIR, "cycles.json"), "w", encoding="utf-8") as fh:
+                json.dump(cyc, fh, ensure_ascii=False, separators=(",", ":"))
+        except Exception as e:
+            log(f"  analisis siklus gagal: {e}")
     with open(os.path.join(OUT_DIR, "quant.json"), "w", encoding="utf-8") as fh:
         json.dump(quant_out, fh, ensure_ascii=False, separators=(",", ":"))
 

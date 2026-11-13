@@ -11,6 +11,7 @@ Bisa di-install di HP seperti aplikasi (PWA).
 |---|---|
 | `scripts/screener.py` | Mesin analisis: unduh data Yahoo Finance → skor → nilai wajar → narasi → `docs/data/` |
 | `scripts/geopolitik.py` | Indeks stres geopolitik, 10 tema, eksposur per saham |
+| `scripts/siklus.py` | Siklus pasar ~100 tahun S&P 500: bull/bear, siklus presiden, musiman, mean reversion, FFT |
 | `scripts/quant.py` | Monte Carlo, metrik risiko, profil faktor, model portofolio, rekam jejak |
 | `docs/` | Web app (HTML/CSS/JS murni, tanpa build) |
 | `.github/workflows/update-data.yml` | Update data otomatis setiap hari bursa |
