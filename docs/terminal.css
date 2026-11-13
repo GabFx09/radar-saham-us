@@ -218,3 +218,23 @@ html:root:not([data-theme="light"]) body::after {
   .grid-2 .row-meta .sc, .search-results .row-meta .sc { display: inline !important; }
 }
 .link-card .ico-lg { filter: grayscale(1) contrast(1.2); background: var(--amber-bg); }
+
+/* ---- pengaturan, alert, kuartalan */
+.alert-form { display: grid; gap: 8px; }
+@media (min-width: 560px) { .sheet .alert-form { grid-template-columns: 1fr 1fr; } }
+.alert-form label, .tog { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
+.alert-form input, .tog input[type=number] { height: 38px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; font-size: 14px; padding: 0 10px; border-radius: 2px; text-transform: none; }
+.alert-form input:focus, .tog input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.tog { flex-direction: row; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--chart-grid); text-transform: none; font-size: 13px; letter-spacing: 0; color: var(--text); }
+.tog input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.tog input[type=number] { height: 30px; }
+.steps { padding-left: 20px; margin: 8px 0; line-height: 1.6; color: var(--text-2); }
+.steps li { margin-bottom: 8px; }
+.steps b, .steps code { color: var(--text); }
+pre.code, .steps code { font-family: var(--mono); font-size: 11.5px; background: var(--surface-2); border: 1px solid var(--border); padding: 8px 10px; overflow-x: auto; margin: 6px 0; white-space: pre; color: var(--accent); }
+.steps code { padding: 1px 5px; }
+a.icon-btn { color: var(--text); }
+.lr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-top: 10px; }
+.lr-grid > div { background: var(--surface); padding: 9px 10px; }
+.lr-grid .h { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
+.lr-grid .v { font-weight: 800; font-size: 17px; }

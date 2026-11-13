@@ -1,4 +1,4 @@
-﻿/* =====================================================================
+/* =====================================================================
    Radar Saham US — aplikasi (vanilla JS, tanpa build)
    ===================================================================== */
 'use strict';
@@ -178,6 +178,7 @@ function render() {
   else if (view === 'siklus') renderSiklus(el);
   else if (view === 'makro') renderMakro(el);
   else if (view === 'heatmap') renderHeatmap(el);
+  else if (view === 'pengaturan') renderSettings(el);
   else renderHome(el);
   updateCmpBar();
   termAfterRender(view);
@@ -289,7 +290,7 @@ function renderHome(el) {
 
 function pickCard(s) {
   const up = s.val ? s.val.upside : null;
-  const reason = s.pros[0] ? s.pros[0].text : s.thesis;
+  const reason = s.pro1 || (s.pros && s.pros[0] ? s.pros[0].text : s.thesis || '');
   return `<a class="card pick" href="#/s/${encodeURIComponent(s.sym)}">
     <div class="pick-top">
       <div><div class="pick-rank">#${s.rank} · ${esc(s.sector)}</div>
@@ -671,10 +672,11 @@ function renderDetail(el, sym) {
     <div class="d-actions">
       <button class="btn star-btn ${inWatch ? 'on' : ''}" id="starBtn"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>${inWatch ? 'Di watchlist' : 'Watchlist'}</button>
       <button class="btn ${App.cmp.includes(s.sym) ? 'on' : ''}" id="cmpBtn"><svg viewBox="0 0 24 24"><path d="M12 3v18M5 7h14M5 7l-3 7a3 3 0 006 0zM19 7l-3 7a3 3 0 006 0z"/></svg><span>${App.cmp.includes(s.sym) ? 'Dibandingkan' : 'Bandingkan'}</span></button>
+      <button class="btn ${App.alerts && App.alerts[s.sym] ? 'on' : ''}" id="alertBtn"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></svg>Alert</button>
       <button class="btn" id="shareBtn"><svg viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 001 1h14a1 1 0 001-1v-7M16 6l-4-4-4 4M12 2v13"/></svg>Bagikan</button>
     </div>
     <div class="detail-grid" style="margin-top:16px">
-      <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}</div>
+      <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}${qtrCard(s, 10)}</div>
       <div class="dcol">${scoreHtml}${valHtml}${estCard(s, 6)}${mcCard(s, 6)}${planHtml}${techHtml}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
     </div>
     <p class="disclaimer">Analisis otomatis berbasis data Yahoo Finance; bukan rekomendasi investasi personal. Proyeksi adalah estimasi model dan bisa meleset.</p>
@@ -686,6 +688,7 @@ function renderDetail(el, sym) {
     $('#starBtn').classList.toggle('on', on);
     $('#starBtn').lastChild.textContent = on ? 'Di watchlist' : 'Watchlist';
   };
+  $('#alertBtn').onclick = () => openAlertSheet(s);
   $('#cmpBtn').onclick = () => {
     toggleCmp(s.sym);
     const on = App.cmp.includes(s.sym);
@@ -831,7 +834,7 @@ function renderWatchlist(el) {
   const avg = ups.length ? ups.reduce((a, b) => a + b, 0) / ups.length : null;
   el.innerHTML = `<div class="fade-in">
     <h1 class="page-title">Watchlist</h1>
-    <p class="page-sub">Saham pantauan Anda — tersimpan di perangkat ini.</p>
+    <p class="page-sub">Saham pantauan Anda — ${App.cloud && App.cloud.gistId ? '☁ tersinkron ke cloud' : 'tersimpan di perangkat ini'} · <a class="link" href="#/pengaturan">Sinkronisasi &amp; notifikasi ›</a></p>
     ${(() => { const ch = list.filter((s) => s.prev && s.prev.rating !== s.rating); return ch.length ? `<div class="card card-pad" style="margin-bottom:14px;border-color:var(--accent)">
       <div class="mk-label">🔔 Perubahan rekomendasi sejak ${fmt.date(ch[0].prev.d, { day: 'numeric', month: 'short' })}</div>
       ${ch.map((s) => `<a class="chg-row" href="#/s/${encodeURIComponent(s.sym)}"><b>${esc(s.sym)}</b><span class="small muted chg-name">${esc(s.name)}</span><span class="chg-flow">${ratingBadge(s.prev.rating)}<span class="faint">→</span>${ratingBadge(s.rating)}</span></a>`).join('')}</div>` : ''; })()}
@@ -902,6 +905,9 @@ function renderMethod(el) {
 
     <h2>7. Siklus Pasar 100 Tahun</h2>
     <p>Data harian S&amp;P 500 sejak 1927. Bull/bear market memakai aturan 20% (naik/turun ≥20% dari titik ekstrem). Siklus presiden mengelompokkan return tahunan menurut tahun masa jabatan; musiman memakai return bulanan; mean reversion membandingkan deviasi harga dari tren eksponensial 100 tahun dengan return 10 tahun berikutnya. Analisis spektral (FFT berjendela Hann) diuji terhadap 300 simulasi red noise AR(1) untuk melihat apakah ada siklus berperiode tetap yang signifikan.</p>
+
+    <h2>Data Kuartalan</h2>
+    <p>Free cash flow memakai jumlah 4 kuartal terakhir (TTM) bila tersedia — lebih segar daripada laporan tahunan yang bisa tertinggal hingga 12 bulan. Pertumbuhan pendapatan per kuartal (YoY) dan percepatannya, serta margin operasi 12 bulan vs 12 bulan sebelumnya, ikut menjadi alasan beli/risiko.</p>
 
     <h2>8. Revisi Estimasi &amp; Monitor Makro</h2>
     <p><b>Revisi estimasi</b> — untuk ±230 saham teratas, perubahan estimasi EPS tahun ini &amp; tahun depan dalam 7/30/90 hari, jumlah revisi naik vs turun, dan kejutan laba 4 kuartal. Skor revisi (55% revisi 90 hari, 20% rasio naik/turun, 25% kejutan laba) menyumbang 40% skor analis.</p>

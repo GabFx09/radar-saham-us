@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Screener Saham US — mesin analisis fundamental + teknikal.
 
@@ -202,7 +202,13 @@ def fetch_fundamentals(sym):
             inc = t.income_stmt
             bal = t.balance_sheet
             cf = t.cashflow
-            return sym, (info, inc, bal, cf), None
+            qinc = qcf = None
+            try:  # laporan kuartalan (opsional: kegagalan tidak membatalkan saham ini)
+                qinc = t.quarterly_income_stmt
+                qcf = t.quarterly_cashflow
+            except Exception:
+                pass
+            return sym, (info, inc, bal, cf, qinc, qcf), None
         except Exception as e:
             last_err = e
             time.sleep(1.5 * (attempt + 1))
@@ -410,7 +416,67 @@ def piotroski(inc, bal, cf):
         return None, None
 
 
-def compute_fund(info, inc, bal, cf):
+def quarterly(qinc, qcf):
+    """Ringkasan laporan kuartalan: FCF 12 bulan terakhir (TTM), pertumbuhan pendapatan YoY per kuartal
+    (dan percepatannya), margin operasi TTM vs 12 bulan sebelumnya, serta riwayat 6 kuartal untuk grafik."""
+    try:
+        if qinc is None or qinc.empty:
+            return None
+        cols = sorted(qinc.columns, reverse=True)[:9]
+
+        def row(df, names):
+            if df is None or df.empty:
+                return None
+            for n in ([names] if isinstance(names, str) else names):
+                if n in df.index:
+                    return df.loc[n]
+            return None
+        rev = row(qinc, "Total Revenue")
+        ni = row(qinc, ["Net Income", "Net Income Common Stockholders"])
+        op = row(qinc, ["Operating Income", "EBIT"])
+        fcf = row(qcf, "Free Cash Flow")
+        ocf = row(qcf, "Operating Cash Flow")
+        capex = row(qcf, "Capital Expenditure")
+
+        def g(ser, c):
+            if ser is None or c not in ser.index:
+                return None
+            return sf(ser.get(c))
+        q = []
+        for c in cols:
+            fc = g(fcf, c)
+            if fc is None and g(ocf, c) is not None:
+                fc = g(ocf, c) + (g(capex, c) or 0)
+            q.append({"d": str(c)[:10], "rev": g(rev, c), "ni": g(ni, c), "op": g(op, c), "fcf": fc})
+        out = {}
+        f4 = [x["fcf"] for x in q[:4]]
+        out["fcf_ttm"] = sum(f4) if len(f4) == 4 and all(v is not None for v in f4) else None
+        rv = [x["rev"] for x in q]
+
+        def yoy(i):
+            if len(rv) > i + 4 and rv[i] and rv[i + 4] and rv[i + 4] > 0:
+                return rv[i] / rv[i + 4] - 1
+            return None
+        out["rev_yoy"], out["rev_yoy_prev"] = yoy(0), yoy(1)
+        out["accel"] = out["rev_yoy"] - out["rev_yoy_prev"] if None not in (out["rev_yoy"], out["rev_yoy_prev"]) else None
+
+        def opm(a, b):
+            seg = q[a:b]
+            if len(seg) == 4 and all(x["op"] is not None and x["rev"] for x in seg):
+                return sum(x["op"] for x in seg) / sum(x["rev"] for x in seg)
+            return None
+        out["opm_ttm"], out["opm_prev"] = opm(0, 4), opm(4, 8)
+        h = [x for x in q[:6] if x["rev"] is not None][::-1]
+        out["hist"] = {"d": [x["d"] for x in h], "rev": [r(x["rev"], 0) for x in h], "ni": [r(x["ni"], 0) for x in h],
+                       "opm": [r(x["op"] / x["rev"], 4) if x["op"] is not None and x["rev"] else None for x in h],
+                       "yoy": [r(rv[q.index(x)] / rv[q.index(x) + 4] - 1, 4)
+                               if len(rv) > q.index(x) + 4 and rv[q.index(x) + 4] else None for x in h]}
+        return {k: (r(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
+    except Exception:
+        return None
+
+
+def compute_fund(info, inc, bal, cf, qinc=None, qcf=None):
     f = {}
     sector = info.get("sector") or "Lainnya"
     is_fin = sector == "Financial Services" and (info.get("industry") or "").find("Insurance") < 0
@@ -441,6 +507,13 @@ def compute_fund(info, inc, bal, cf):
     # FCF dari laporan arus kas (OCF - capex). Field freeCashflow Yahoo = "levered FCF" → hanya cadangan
     fcf_annual = fcf_hist[0]
     fcf_use = fcf_annual if fcf_annual is not None else fcf_ttm
+    # bila laporan kuartalan tersedia: pakai FCF 12 bulan terakhir (lebih segar dari laporan tahunan)
+    qd = quarterly(qinc, qcf)
+    f["qtr"] = qd
+    f["fcf_src"] = "annual"
+    if qd and qd.get("fcf_ttm") is not None:
+        fcf_use = qd["fcf_ttm"]
+        f["fcf_src"] = "ttm"
     f["fcf"] = fcf_use
     f["fcf_margin"] = div(fcf_use, rev_ttm or rev[0])
 
@@ -973,6 +1046,24 @@ def build_reasons(rec, medians):
         C(60, f"Payout ratio {pct(f['payout'])} — dividen melebihi laba, keberlanjutan perlu dicermati.",
           "Pemegang Saham")
 
+    qd = rec["f"].get("qtr")
+    if qd:
+        y0, y1, ac = qd.get("rev_yoy"), qd.get("rev_yoy_prev"), qd.get("accel")
+        if y0 is not None and ac is not None:
+            if y0 >= 0.08 and ac >= 0.03:
+                P(56 + min(ac, 0.3) * 80, f"Pertumbuhan pendapatan MEMPERCEPAT: kuartal terakhir {pct(y0)} YoY vs "
+                                         f"{pct(y1)} pada kuartal sebelumnya.", "Kuartalan")
+            elif ac <= -0.08 and y0 < 0.20:
+                C(50 + min(-ac, 0.3) * 60, f"Pertumbuhan pendapatan melambat: kuartal terakhir {pct(y0)} YoY vs "
+                                          f"{pct(y1)} pada kuartal sebelumnya.", "Kuartalan")
+        m0, m1 = qd.get("opm_ttm"), qd.get("opm_prev")
+        if m0 is not None and m1 is not None:
+            if m0 - m1 >= 0.03 and m0 > 0:
+                P(52 + min(m0 - m1, 0.2) * 100, f"Margin operasi 12 bulan terakhir naik ke {pct(m0)} dari {pct(m1)} "
+                                               f"setahun sebelumnya — efisiensi membaik.", "Kuartalan")
+            elif m1 - m0 >= 0.04:
+                C(50 + min(m1 - m0, 0.2) * 100, f"Margin operasi 12 bulan terakhir turun ke {pct(m0)} dari {pct(m1)} "
+                                               f"setahun sebelumnya.", "Kuartalan")
     e = rec.get("est")
     if e:
         r90 = [e[k]["r90"] for k in ("fy0", "fy1") if e.get(k) and e[k].get("r90") is not None]
@@ -1131,7 +1222,7 @@ def main():
 
     log("3/4 Menghitung metrik...")
     records = []
-    for s, (info, inc, bal, cf) in raw.items():
+    for s, (info, inc, bal, cf, qinc, qcf) in raw.items():
         try:
             fin_cur = info.get("financialCurrency") or "USD"
             if fin_cur != (info.get("currency") or "USD"):
@@ -1144,7 +1235,7 @@ def main():
             if ip:
                 t["price"] = ip
                 t["dist_high"] = ip / t["high52"] - 1
-            f = compute_fund(info, inc, bal, cf)
+            f = compute_fund(info, inc, bal, cf, qinc, qcf)
             sector = info.get("sector") or "Lainnya"
             records.append({
                 "sym": s, "name": info.get("shortName") or info.get("longName") or s,
@@ -1299,6 +1390,7 @@ def main():
             "geo": rec["geo"], "country": rec["country"],
             "factors": rec.get("factors"),
             "est": rec.get("est"), "rev": rec.get("rev"),
+            "qtr": rec["f"].get("qtr"), "fcf_src": rec["f"].get("fcf_src"),
             "q": None if not rec.get("q_risk") else {
                 **{k: r(x, 4) for k, x in rec["q_risk"].items()},
                 "mc": None if not rec.get("mc") else {
@@ -1393,6 +1485,37 @@ def main():
     with open(os.path.join(OUT_DIR, "quant.json"), "w", encoding="utf-8") as fh:
         json.dump(quant_out, fh, ensure_ascii=False, separators=(",", ":"))
 
+    # ---- pecah: stocks.json ringkas untuk daftar/screener, detail/{SYM}.json untuk halaman saham
+    detail_dir = os.path.join(OUT_DIR, "detail")
+    os.makedirs(detail_dir, exist_ok=True)
+    heavy = {"pros", "cons", "thesis", "summary", "website", "hist", "piotroski_checks", "mp", "tech_d", "plan",
+             "est", "earnings_last", "country", "qtr", "fcf_src"}
+    m_list = ["pe_fwd", "peg", "roe", "roic", "rev_cagr3", "rev_growth", "eps_growth_fwd", "piotroski", "div_yield",
+              "payout", "fcf_yield", "op_margin", "de", "beta"]
+    slim = []
+    for s_ in stocks:
+        det = {k: s_.get(k) for k in heavy}
+        det.update({"sym": s_["sym"], "m": s_["m"], "val": s_["val"], "q": s_.get("q"), "geo": s_.get("geo")})
+        with open(os.path.join(detail_dir, f"{s_['sym']}.json"), "w", encoding="utf-8") as fh:
+            json.dump(det, fh, ensure_ascii=False, separators=(",", ":"))
+        sl = {k: v for k, v in s_.items() if k not in heavy}
+        sl["m"] = {k: s_["m"].get(k) for k in m_list}
+        sl["pro1"] = s_["pros"][0]["text"] if s_["pros"] else s_["thesis"]
+        if s_["val"]:
+            sl["val"] = {k: s_["val"].get(k) for k in ("fair", "upside", "confidence", "capped")}
+        if s_.get("q"):
+            mc = s_["q"].get("mc")
+            sl["q"] = {k: s_["q"].get(k) for k in ("vol", "mdd", "sharpe", "beta_calc")}
+            sl["q"]["mc"] = {k: mc.get(k) for k in ("p_up", "p_loss20", "exp")} if mc else None
+        if s_.get("geo"):
+            sl["geo"] = {k: s_["geo"].get(k) for k in ("score", "opp", "risk", "risk_label")}
+        slim.append(sl)
+    if not args.tickers:
+        keep_d = {x["sym"] for x in stocks}
+        for fn in os.listdir(detail_dir):
+            if fn.endswith(".json") and fn[:-5] not in keep_d:
+                os.remove(os.path.join(detail_dir, fn))
+
     payload = {
         "changes": changes,
         "generated": now.isoformat(timespec="seconds"),
@@ -1400,7 +1523,7 @@ def main():
         "count": len(stocks),
         "market": market,
         "sectors": sector_out,
-        "stocks": stocks,
+        "stocks": slim,
     }
     with open(os.path.join(OUT_DIR, "stocks.json"), "w", encoding="utf-8") as fh:
         json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))

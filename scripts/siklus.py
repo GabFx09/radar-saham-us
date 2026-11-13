@@ -360,4 +360,169 @@ def build(log=print, close=None):
         "ytd": _r(c.iloc[-1] / ye[ye.index.year == now.year - 1].iloc[0] - 1),
     }
     log(f"  siklus: {len(bulls)} bull, {len(bears)} bear, deviasi tren {dev[-1]*100:.0f}%")
+    try:
+        out["longrun"] = long_run(c, log)
+    except Exception as e:  # noqa: BLE001
+        log(f"  siklus: total return/CAPE gagal ({e})")
+    return out
+
+
+# ----------------------------------------------------------------------------- total return, inflasi, CAPE
+SHILLER_CSV = "https://raw.githubusercontent.com/datasets/s-and-p-500/main/data/data.csv"
+FRED_CPI = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL"
+
+
+def _get_csv(url, log):
+    import io
+    import requests
+    for attempt in range(3):
+        try:
+            r = requests.get(url, timeout=40, headers={"User-Agent": "radar-saham/1.0"})
+            r.raise_for_status()
+            return pd.read_csv(io.StringIO(r.text))
+        except Exception as e:  # noqa: BLE001
+            if attempt == 2:
+                log(f"  siklus: gagal unduh {url.split('/')[2]} ({e})")
+    return None
+
+
+def long_run(c, log=print):
+    """Gabungkan data Shiller (dividen, laba, CPI sejak 1871) dengan harga ^GSPC, dividen SPY, dan CPI FRED
+    terbaru untuk menghitung total return (dividen diinvestasikan ulang), return riil, dan CAPE."""
+    import yfinance as yf
+    sh = _get_csv(SHILLER_CSV, log)
+    if sh is None:
+        return None
+    sh["Date"] = pd.to_datetime(sh["Date"])
+    sh = sh.set_index("Date").sort_index()
+    sh.index = sh.index.to_period("M")
+    # harga bulanan: rata-rata ^GSPC (definisi Shiller = rata-rata bulanan)
+    pm = c.resample("ME").mean()
+    pm.index = pm.index.to_period("M")
+    months = pd.period_range(sh.index[0], pm.index[-1], freq="M")
+    df = pd.DataFrame(index=months)
+    df["P"] = sh["SP500"].where(sh["SP500"] > 0)
+    df.loc[pm.index, "P"] = pm  # harga Yahoo lebih akurat bila tersedia
+    df["D"] = sh["Dividend"].where(sh["Dividend"] > 0)
+    df["E"] = sh["Earnings"].where(sh["Earnings"] > 0)
+    df["CPI"] = sh["Consumer Price Index"].where(sh["Consumer Price Index"] > 0)
+    last_d = df["D"].last_valid_index()
+    # --- dividen setelah data Shiller: imbal hasil dividen 12 bln SPY x harga indeks
+    try:
+        spy = yf.Ticker("SPY")
+        dv = spy.dividends
+        sp = spy.history(period="max", auto_adjust=False)["Close"]
+        if len(dv) and len(sp):
+            dv.index = dv.index.tz_localize(None)
+            sp.index = sp.index.tz_localize(None)
+            ttm = dv.rolling("365D").sum()
+            yld = (ttm.reindex(sp.index, method="ffill") / sp).resample("ME").last()
+            yld.index = yld.index.to_period("M")
+            fill = df.index[df.index > last_d]
+            df.loc[fill, "D"] = (yld.reindex(fill).ffill().bfill() * df.loc[fill, "P"]).values
+        try:
+            pe = (spy.info or {}).get("trailingPE")
+        except Exception:  # noqa: BLE001
+            pe = None
+    except Exception as e:  # noqa: BLE001
+        log(f"  siklus: dividen SPY gagal ({e})")
+        pe = None
+    df["D"] = df["D"].ffill()
+    # --- laba setelah data Shiller: interpolasi linier ke laba tersirat P/E SPY saat ini
+    last_e = df["E"].last_valid_index()
+    if pe and pe > 0 and last_e is not None and last_e < df.index[-1]:
+        df.loc[df.index[-1], "E"] = df["P"].iloc[-1] / pe
+        e = df["E"].copy()
+        e.index = e.index.to_timestamp()
+        e = e.interpolate(method="time", limit_area="inside")
+        e.index = e.index.to_period("M")
+        df["E"] = e
+    # --- CPI: FRED (bulanan sejak 1947) disambung ke CPI Shiller
+    fred = _get_csv(FRED_CPI, log)
+    if fred is not None and len(fred.columns) >= 2:
+        fred.columns = ["date", "cpi"]
+        fred["date"] = pd.to_datetime(fred["date"]).dt.to_period("M")
+        fs = pd.to_numeric(fred.set_index("date")["cpi"], errors="coerce").dropna()
+        ov = df["CPI"].dropna().index.intersection(fs.index)
+        if len(ov) > 12:
+            k = float((df.loc[ov[-12:], "CPI"] / fs.loc[ov[-12:]]).mean())
+            newer = fs.index[fs.index > df["CPI"].last_valid_index()]
+            df.loc[df.index.intersection(newer), "CPI"] = fs.loc[newer].reindex(df.index.intersection(newer)) * k
+    cpi_last = df["CPI"].last_valid_index()
+    df["CPI"] = df["CPI"].ffill()
+    df = df.dropna(subset=["P", "D"])
+    # --- indeks total return & riil
+    gross = (df["P"] + df["D"] / 12) / df["P"].shift(1)
+    df["TR"] = gross.fillna(1).cumprod()
+    df["PR"] = df["P"] / df["P"].iloc[0]
+    df["RTR"] = df["TR"] / (df["CPI"] / df["CPI"].iloc[0])
+    # --- CAPE (P / rata-rata laba riil 10 tahun)
+    real_e = df["E"] * (df["CPI"].iloc[-1] / df["CPI"])
+    real_p = df["P"] * (df["CPI"].iloc[-1] / df["CPI"])
+    df["CAPE"] = real_p / real_e.rolling(120, min_periods=120).mean()
+
+    def cagr(series, a, b):
+        s = series[(series.index >= a) & (series.index <= b)].dropna()
+        if len(s) < 24:
+            return None
+        yrs = (len(s) - 1) / 12
+        return _r((s.iloc[-1] / s.iloc[0]) ** (1 / yrs) - 1)
+    a27, a71, end = pd.Period("1927-12", "M"), df.index[0], df.index[-1]
+    out = {
+        "start": str(a71), "end": str(end), "cpi_until": str(cpi_last),
+        "div_until_shiller": str(last_d), "earn_until_shiller": str(last_e),
+        "cagr": {
+            "since1927": {"price": cagr(df["PR"], a27, end), "tr": cagr(df["TR"], a27, end), "real": cagr(df["RTR"], a27, end)},
+            "since1871": {"price": cagr(df["PR"], a71, end), "tr": cagr(df["TR"], a71, end), "real": cagr(df["RTR"], a71, end)},
+            "last30": {"price": cagr(df["PR"], end - 360, end), "tr": cagr(df["TR"], end - 360, end), "real": cagr(df["RTR"], end - 360, end)},
+        },
+        "div_yield_now": _r(df["D"].iloc[-1] / df["P"].iloc[-1]),
+        "div_yield_avg": _r((df["D"] / df["P"]).mean()),
+        "inflation": cagr(df["CPI"], a27, end),
+    }
+    # multiplikasi $1 sejak 1927
+    base = df[df.index >= a27]
+    out["growth_1"] = {"price": _r(base["PR"].iloc[-1] / base["PR"].iloc[0], 1), "tr": _r(base["TR"].iloc[-1] / base["TR"].iloc[0], 1),
+                       "real": _r(base["RTR"].iloc[-1] / base["RTR"].iloc[0], 1)}
+    # seri tahunan untuk grafik (Desember tiap tahun + bulan terakhir), dinormalisasi ke 1 pada 1927
+    yr = base[(base.index.month == 12) | (base.index == base.index[-1])]
+    out["series"] = [[str(i)[:7], _r(row.PR / base["PR"].iloc[0], 3), _r(row.TR / base["TR"].iloc[0], 3),
+                      _r(row.RTR / base["RTR"].iloc[0], 3)] for i, row in yr.iterrows()]
+    # pemulihan drawdown besar: harga vs total return vs riil
+    rec = []
+    for name, peak, trough in [("Depresi Besar", "1929-09", "1932-06"), ("Stagflasi 1973", "1973-01", "1974-10"),
+                               ("Dot-com", "2000-03", "2002-10"), ("Krisis 2008", "2007-10", "2009-03"),
+                               ("Bear 2022", "2022-01", "2022-10")]:
+        p0 = pd.Period(peak, "M")
+        row = {"name": name, "peak": peak}
+        for k in ("PR", "TR", "RTR"):
+            ser = df[k]
+            if p0 not in ser.index:
+                continue
+            lvl = ser.loc[p0]
+            after = ser[ser.index > pd.Period(trough, "M")]
+            hit = after[after >= lvl]
+            row[k.lower()] = _r((hit.index[0] - p0).n / 12, 1) if len(hit) else None
+            row[k.lower() + "_dd"] = _r(ser[(ser.index >= p0) & (ser.index <= pd.Period(trough, "M") + 6)].min() / lvl - 1)
+        rec.append(row)
+    out["recovery"] = rec
+    # CAPE: posisi sekarang & return riil 10 thn ke depan per kuintil
+    cape = df["CAPE"].dropna()
+    f10 = (df["RTR"].shift(-120) / df["RTR"]) ** (1 / 10) - 1
+    q = pd.qcut(cape, 5, labels=False)
+    quint = []
+    for i in range(5):
+        m = (q == i) & f10.reindex(cape.index).notna()
+        quint.append({"q": i + 1, "lo": _r(cape[q == i].min(), 1), "hi": _r(cape[q == i].max(), 1),
+                      "f10": _r(f10.reindex(cape.index)[m].mean()), "min": _r(f10.reindex(cape.index)[m].min()),
+                      "max": _r(f10.reindex(cape.index)[m].max()), "n": int(m.sum())})
+    corr = f10.reindex(cape.index).dropna()
+    out["cape"] = {
+        "now": _r(cape.iloc[-1], 1), "pct": _r((cape < cape.iloc[-1]).mean()), "median": _r(cape.median(), 1),
+        "max": [str(cape.idxmax()), _r(cape.max(), 1)], "min": [str(cape.idxmin()), _r(cape.min(), 1)],
+        "quint": quint, "approx_from": str(last_e),
+        "corr": _r(np.corrcoef(np.log(cape.reindex(corr.index)), corr)[0, 1], 2) if len(corr) > 50 else None,
+        "series": [[str(i), _r(v, 1)] for i, v in cape.iloc[::3].items()] + [[str(cape.index[-1]), _r(cape.iloc[-1], 1)]],
+    }
+    log(f"  siklus: total return {out['cagr']['since1927']['tr']}, riil {out['cagr']['since1927']['real']}, CAPE {out['cape']['now']}")
     return out

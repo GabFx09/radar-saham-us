@@ -15,6 +15,7 @@ const CMDS = [
   { k: 'STRATEGI', h: '#/strategi', d: 'Model portofolio, rekam jejak, kalender laba', n: '7', a: ['PORT', 'STRAT', 'PRT', 'EVTS'] },
   { k: 'WATCHLIST', h: '#/watchlist', d: 'Saham pantauan Anda', n: '8', a: ['WL', 'WATCH', 'MON'] },
   { k: 'METODE', h: '#/metode', d: 'Metodologi & sumber data', n: '9', a: ['DOCS', 'METODOLOGI'] },
+  { k: 'SETELAN', h: '#/pengaturan', d: 'Sinkronisasi cloud, Telegram & alert harga', n: '0', a: ['SET', 'PENGATURAN', 'ALERT', 'ALRT', 'SYNC'] },
   { k: 'CMP', h: '#/bandingkan', d: 'Bandingkan saham · CMP NVDA AMD AVGO', n: '', a: ['BANDINGKAN', 'COMP', 'RV'] },
   { k: 'TEMA', h: 'theme', d: 'Ganti tema terminal gelap / kertas', n: '', a: ['THEME'] },
   { k: 'HELP', h: 'help', d: 'Daftar perintah', n: '', a: ['?', 'BANTUAN'] },

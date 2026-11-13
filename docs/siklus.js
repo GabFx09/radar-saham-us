@@ -156,6 +156,12 @@ async function renderSiklus(el) {
     <section class="section card card-pad">
       <h3 class="card-title"><span class="ico">📜</span>S&amp;P 500 Sejak ${c.start.slice(0, 4)} (Skala Log)</h3>
       ${centuryChart(c)}
+      ${c.longrun ? (() => { const L = c.longrun, g = L.cagr.since1927, k = L.cape; return `<div class="lr-grid">
+        <div><div class="h">Harga saja</div><div class="v">${fmt.pct(g.price, 1, false)}/thn</div><div class="small faint">$1 → $${L.growth_1.price}</div></div>
+        <div><div class="h">+ Dividen (total return)</div><div class="v up">${fmt.pct(g.tr, 1, false)}/thn</div><div class="small faint">$1 → $${Number(L.growth_1.tr).toLocaleString('en-US')}</div></div>
+        <div><div class="h">Riil (setelah inflasi ${fmt.pct(L.inflation, 1, false)})</div><div class="v">${fmt.pct(g.real, 1, false)}/thn</div><div class="small faint">$1 → $${L.growth_1.real}</div></div></div>
+        <p class="small muted" style="margin:10px 0 0">Pemulihan ke puncak lama (tahun) — harga / total return / riil: ${L.recovery.map((r) => `<b>${esc(r.name)}</b> ${r.pr ?? '–'} / ${r.tr ?? '–'} / ${r.rtr ?? '–'}`).join(' · ')}.</p>
+        ${k ? `<p class="small muted" style="margin:8px 0 0"><b>CAPE (Shiller P/E) ${k.now}</b> — persentil ${Math.round(k.pct * 100)} sejak 1881 (median ${k.median}). Return riil 10 thn berikutnya per kuintil CAPE: ${k.quint.map((q) => `${q.lo}–${q.hi}: <b class="${cls(q.f10)}">${fmt.pct(q.f10, 1)}</b>`).join(' · ')}. <span class="faint">Laba setelah ${esc(k.approx_from)} diperkirakan dari P/E SPY.</span></p>` : ''}`; })() : ''}
       <div class="legend"><span><i style="background:var(--accent-2)"></i>S&amp;P 500</span><span><i style="background:var(--text-3)"></i>Tren eksponensial ${fmt.pct(c.trend.cagr, 1, false)}/thn</span><span><i style="background:var(--down);opacity:.35;height:8px"></i>Bear market</span></div>
     </section>
 
