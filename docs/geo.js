@@ -42,7 +42,7 @@ function themeTags(keys) {
 }
 
 function newsItem(n) {
-  return `<a class="news" href="${esc(n.url || '#')}" target="_blank" rel="noopener">
+  return `<a class="news" href="${esc(/^https?:\/\//i.test(n.url || '') ? n.url : '#')}" target="_blank" rel="noopener">
     <div class="news-title">${esc(n.title)}</div>
     <div class="news-meta">${n.sym ? `<b>${esc(n.sym)}</b> · ` : ''}${esc(n.source || '')}${n.date ? ' · ' + geoDate(n.date) : ''}</div>
     ${n.themes ? `<div class="news-tags">${themeTags(n.themes)}</div>` : ''}

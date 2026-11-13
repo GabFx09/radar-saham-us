@@ -296,7 +296,7 @@ function pickCard(s) {
       <div class="pick-sym">${esc(s.sym)}</div><div class="pick-name">${esc(s.name)}</div></div>
       ${ring(s.score)}
     </div>
-    <div class="pick-up"><div><div class="mk-label">Proyeksi naik</div><div class="big ${cls(up)}">${fmt.pct(up, 0)}</div></div>
+    <div class="pick-up"><div><div class="mk-label">Proyeksi naik</div><div class="big ${cls(up)}">${s.val && s.val.capped ? '≥' : ''}${fmt.pct(up, 0)}</div></div>
       <div style="text-align:right"><div class="mk-label">Target</div><div class="mono" style="font-weight:700">${fmt.usd(s.val?.fair)}</div><div class="faint small mono">dari ${fmt.usd(s.price)}</div></div></div>
     <div class="pick-reason">${esc(reason)}</div>
     <div class="pick-foot">${ratingBadge(s.rating)}<span class="tag">Fund ${Math.round(s.fund)}</span><span class="tag">Tek ${Math.round(s.tech)}</span></div>
@@ -503,7 +503,7 @@ function renderDetail(el, sym) {
   const v = s.val, m = s.m, t = s.tech_d, p = s.plan;
   const up = v ? v.upside : null;
   const inWatch = App.watch.has(s.sym);
-  const nextEarn = s.earnings_ts && s.earnings_ts * 1000 > Date.now() ? fmt.date(s.earnings_ts * 1000) : null;
+  const nextEarn = s.earnings_ts && s.earnings_ts * 1000 > Date.now() - 864e5 ? fmt.date(s.earnings_ts * 1000) + (s.earnings_est ? ' (perkiraan)' : '') : null;
   const confN = v ? { Tinggi: 3, Sedang: 2, Rendah: 1 }[v.confidence] : 0;
 
   // ---------- proyeksi
@@ -514,7 +514,8 @@ function renderDetail(el, sym) {
     projHtml = `<div class="card proj ${up < 0 ? 'neg' : ''}" style="order:1">
       <div class="proj-top">
         <div><div class="mk-label">Proyeksi kenaikan ~12 bulan</div>
-          <div class="proj-big ${cls(up)}">${fmt.pct(up)}</div>
+          <div class="proj-big ${cls(up)}">${v.capped ? '≥' : ''}${fmt.pct(up)}</div>
+          ${v.capped ? '<div class="small" style="color:var(--warn)">Mentok batas model +100% — estimasi sangat tidak pasti</div>' : ''}
           <div class="proj-sub">Total return termasuk dividen: <b class="${cls(v.total_return)}">${fmt.pct(v.total_return)}</b></div></div>
         <div class="proj-target"><div class="mk-label">Nilai wajar</div><div class="v">${fmt.usd(v.fair)}</div>
           <div class="conf c${confN}" title="Tingkat keyakinan berdasarkan kesesuaian antar-metode & jumlah analis"><i><b></b></i> Keyakinan ${esc(v.confidence)}</div></div>
@@ -880,7 +881,7 @@ function renderMethod(el) {
 
     <h2>4. Rekomendasi</h2>
     <div class="card"><table class="wtable">
-      <tr><td>${ratingBadge('STRONG BUY')} skor ≥ 70, fundamental ≥ 65, upside ≥ 12%</td><td></td></tr>
+      <tr><td>${ratingBadge('STRONG BUY')} skor ≥ 70, fundamental ≥ 65, upside ≥ 12%, keyakinan nilai wajar minimal Sedang</td><td></td></tr>
       <tr><td>${ratingBadge('BUY')} skor ≥ 60, fundamental ≥ 55, upside ≥ 5%</td><td></td></tr>
       <tr><td>${ratingBadge('HOLD')} skor ≥ 45 &amp; upside ≥ -10%, atau fundamental ≥ 62 &amp; upside ≥ -25%</td><td></td></tr>
       <tr><td>${ratingBadge('HINDARI')} selain di atas</td><td></td></tr>

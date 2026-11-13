@@ -150,6 +150,21 @@ def log(*a):
     print(*a, flush=True)
 
 
+def next_earnings(info):
+    """Tanggal laporan keuangan berikutnya. Yahoo: earningsTimestamp = laporan TERAKHIR,
+    earningsTimestampStart/End = jendela laporan berikutnya."""
+    now = time.time() - 86400
+    for k in ("earningsTimestampStart", "earningsCallTimestampStart", "earningsTimestamp", "earningsTimestampEnd"):
+        v = info.get(k)
+        if isinstance(v, (int, float)) and v > now:
+            return int(v)
+    return None
+
+
+# kelas saham ganda: simpan satu kelas saja agar daftar & portofolio tidak dobel
+DUP_CLASSES = {"GOOG", "FOX", "NWS"}
+
+
 # ----------------------------------------------------------------------------- universe
 def get_universe(args):
     if args.tickers:
@@ -167,7 +182,7 @@ def get_universe(args):
     for t in EXTRAS:
         if t not in syms:
             syms.append(t)
-    syms = list(dict.fromkeys(syms))
+    syms = [s for s in dict.fromkeys(syms) if s not in DUP_CLASSES]
     if args.limit:
         syms = syms[: args.limit]
     return syms
@@ -760,10 +775,10 @@ def fair_value(rec, medians):
     }
 
 
-def rating_for(overall, fund, upside):
+def rating_for(overall, fund, upside, conf=None):
     if upside is None:
         upside = 0
-    if overall >= 70 and fund >= 65 and upside >= 0.12:
+    if overall >= 70 and fund >= 65 and upside >= 0.12 and conf != "Rendah":
         return "STRONG BUY"
     if overall >= 60 and fund >= 55 and upside >= 0.05:
         return "BUY"
@@ -1140,7 +1155,9 @@ def main():
                 "summary_full": info.get("longBusinessSummary") or "",
                 "country": info.get("country") or "",
                 "website": info.get("website") or "",
-                "earnings_ts": info.get("earningsTimestamp"),
+                "earnings_ts": next_earnings(info),
+                "earnings_est": bool(info.get("isEarningsDateEstimate")),
+                "earnings_last": info.get("earningsTimestamp"),
                 "f": f, "t": t,
             })
         except Exception as e:
@@ -1203,7 +1220,7 @@ def main():
     for rec in records:
         rec["val"] = fair_value(rec, medians)
         up = rec["val"]["upside"] if rec["val"] else None
-        rec["rating"] = rating_for(rec["score"], rec["fund"], up)
+        rec["rating"] = rating_for(rec["score"], rec["fund"], up, rec["val"]["confidence"] if rec["val"] else None)
         rec["plan"] = trade_plan(rec)
         # ---- kuantitatif: risiko & Monte Carlo
         close = prices[rec["sym"]]["Close"]
@@ -1273,6 +1290,7 @@ def main():
                 "fair": r(v["fair"], 2), "upside": r(v["upside"]), "bear": r(v["bear"], 2),
                 "bull": r(v["bull"], 2), "bear_pct": r(v["bear_pct"]), "bull_pct": r(v["bull_pct"]),
                 "methods": {k: r(x, 2) for k, x in v["methods"].items()}, "confidence": v["confidence"],
+                "capped": bool(v["upside"] >= 0.99),
                 "growth_used": r(v["growth_used"]), "discount": r(v["discount"]),
                 "fair_pe": r(v["fair_pe"], 1), "sector_pe": r(v["sector_pe"], 1),
                 "total_return": r(v["total_return"]),
@@ -1288,6 +1306,7 @@ def main():
                     for k, x in rec["mc"].items()},
             },
             "summary": rec["summary"], "website": rec["website"], "earnings_ts": rec["earnings_ts"],
+            "earnings_est": rec.get("earnings_est"), "earnings_last": rec.get("earnings_last"),
         })
 
     # ringkasan sektor
@@ -1329,8 +1348,16 @@ def main():
     except Exception:
         prev_gen = ""
     if prev_gen and prev_gen < today and not args.tickers:
-        import shutil
-        shutil.copyfile(stocks_path, base_path)
+        try:
+            with open(stocks_path, encoding="utf-8") as fh:
+                old = json.load(fh)
+            mini = {"generated": old.get("generated"),
+                    "stocks": [{"sym": x["sym"], "name": x["name"], "rating": x["rating"], "score": x["score"]}
+                               for x in old.get("stocks", [])]}
+            with open(base_path, "w", encoding="utf-8") as fh:
+                json.dump(mini, fh, ensure_ascii=False, separators=(",", ":"))
+        except Exception as e:
+            log(f"  baseline gagal: {e}")
     changes, prev_map = quant.rating_changes(base_path, stocks)
     for s_ in stocks:
         pm = prev_map.get(s_["sym"])
@@ -1389,6 +1416,12 @@ def main():
         }
         with open(os.path.join(HIST_DIR, f"{rec['sym']}.json"), "w", encoding="utf-8") as fh:
             json.dump(hist, fh, separators=(",", ":"))
+
+    if not args.tickers:
+        keep = {rec["sym"] for rec in records}
+        for fn in os.listdir(HIST_DIR):
+            if fn.endswith(".json") and fn[:-5] not in keep:
+                os.remove(os.path.join(HIST_DIR, fn))
 
     n_sb = sum(1 for s in stocks if s["rating"] == "STRONG BUY")
     n_b = sum(1 for s in stocks if s["rating"] == "BUY")

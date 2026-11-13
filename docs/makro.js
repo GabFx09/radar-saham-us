@@ -308,7 +308,12 @@ function renderHeatmap(el) {
     box.innerHTML = html;
   };
   draw();
-  const ro = new ResizeObserver(() => { if (document.body.contains(box)) draw(); });
+  let lastW = box.clientWidth;
+  const ro = new ResizeObserver(() => {
+    if (!document.body.contains(box) || box.clientWidth === lastW) return;
+    lastW = box.clientWidth;
+    requestAnimationFrame(draw);
+  });
   ro.observe(box);
   App._ro && App._ro.disconnect();
   App._ro = ro;

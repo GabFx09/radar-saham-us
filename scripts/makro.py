@@ -82,12 +82,23 @@ def _chg(c, days, rate):
     return _r(b - a, 3) if rate else _r(b / a - 1)
 
 
+def despike(c, tol=0.025):
+    """Hapus titik yang menyimpang > tol dari median 11 hari di sekitarnya (kuotasi valas Yahoo kadang salah,
+    mis. USD/IDR melompat 3% lalu kembali esok harinya)."""
+    med = c.rolling(11, center=True, min_periods=5).median()
+    ok = (c / med - 1).abs() <= tol
+    ok.iloc[-1] = ok.iloc[-1] or abs(c.iloc[-1] / c.iloc[-6:-1].median() - 1) <= tol * 2
+    return c[ok]
+
+
 def cross_asset(px):
     groups = []
     for gname, items in ASSETS:
         rows = []
         for sym, name in items:
             c = px.get(sym)
+            if c is not None and gname == "Valas":
+                c = despike(c)
             if c is None or len(c) < 30:
                 continue
             rate = sym in RATE_SYMS
