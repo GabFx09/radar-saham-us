@@ -18,6 +18,7 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
       WATCHLIST: ${{ secrets.WATCHLIST }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,7 +34,7 @@ jobs:
           git add docs/data
           git diff --cached --quiet || git commit -m "Update data screener $(date -u +%Y-%m-%d)"
           git push
-      - name: Kirim ringkasan Telegram
-        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+      - name: Kirim ringkasan pagi (kotak masuk, push, Telegram)
+        if: ${{ env.GIST_TOKEN != '' || (env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') }}
         continue-on-error: true
         run: python scripts/notify.py digest

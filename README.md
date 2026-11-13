@@ -64,7 +64,14 @@ Detail lengkap ada di halaman **Metodologi** di aplikasi.
 
 > Bukan nasihat investasi. Proyeksi adalah estimasi model dan bisa meleset.
 
-## Notifikasi Telegram & sinkronisasi cloud
+## Pesan, notifikasi push & sinkronisasi cloud
+
+Tab **Pesan** berisi Radar Bot (bergaya chat): ketik ticker atau perintah (`/top`, `/makro`, `/berita`, `/laporan`,
+`/alert NVDA >200`). Ringkasan pagi, alert harga, dan berita penting dari server masuk ke kotak masuk ini dan
+muncul sebagai **notifikasi push** di HP/laptop (Web Push, perlu secret `VAPID_PRIVATE_KEY` + `GIST_TOKEN`).
+Telegram tetap didukung sebagai saluran tambahan (opsional).
+
+### Telegram (opsional)
 
 Buka halaman **Pengaturan** di aplikasi (ikon lonceng) untuk panduan lengkap. Singkatnya, simpan tiga secret repo:
 `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, dan `GIST_TOKEN` (token GitHub ber-scope gist — sama dengan yang dipakai untuk

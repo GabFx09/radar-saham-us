@@ -27,12 +27,13 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
       WATCHLIST: ${{ secrets.WATCHLIST }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - name: Lewati bila Telegram belum diatur
-        if: ${{ env.TELEGRAM_TOKEN == '' || env.TELEGRAM_CHAT_ID == '' }}
-        run: echo "Secret TELEGRAM_TOKEN / TELEGRAM_CHAT_ID belum diatur — tidak ada yang dikirim."
+        if: ${{ env.GIST_TOKEN == '' && (env.TELEGRAM_TOKEN == '' || env.TELEGRAM_CHAT_ID == '') }}
+        run: echo "Secret GIST_TOKEN (atau TELEGRAM_TOKEN + TELEGRAM_CHAT_ID) belum diatur — tidak ada yang dikirim."
       - uses: actions/checkout@v4
-        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        if: ${{ env.GIST_TOKEN != '' || (env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') }}
         with:
           sparse-checkout: |
             scripts
@@ -41,11 +42,11 @@ jobs:
             docs/data/makro.json
             requirements.txt
       - uses: actions/setup-python@v5
-        if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+        if: ${{ env.GIST_TOKEN != '' || (env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') }}
         with:
           python-version: "3.12"
           cache: pip
-      - if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+      - if: ${{ env.GIST_TOKEN != '' || (env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') }}
         run: pip install -r requirements.txt
-      - if: ${{ env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '' }}
+      - if: ${{ env.GIST_TOKEN != '' || (env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') }}
         run: python scripts/notify.py ${{ github.event.inputs.mode || 'alerts' }}

@@ -179,6 +179,7 @@ function render() {
   else if (view === 'makro') renderMakro(el);
   else if (view === 'heatmap') renderHeatmap(el);
   else if (view === 'pengaturan') renderSettings(el);
+  else if (view === 'pesan') renderPesan(el);
   else renderHome(el);
   updateCmpBar();
   termAfterRender(view);

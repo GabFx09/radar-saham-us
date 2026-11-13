@@ -81,7 +81,7 @@ let localUpdated = store.get('localUpdated', 0);
 
 function cloudPayload() {
   return { v: 1, updated: new Date(localUpdated || Date.now()).toISOString(), watchlist: [...App.watch], compare: App.cmp,
-    alerts: App.alerts, settings: App.notify };
+    alerts: App.alerts, settings: App.notify, push: App.pushSubs || [] };
 }
 function applyState(st) {
   App.watch = new Set((st.watchlist || []).filter(Boolean));
@@ -92,6 +92,8 @@ function applyState(st) {
   store.set('alerts', App.alerts);
   App.notify = Object.assign({}, NOTIFY_DEFAULT, st.settings || {});
   store.set('notify', App.notify);
+  App.pushSubs = st.push || [];
+  store.set('pushSubs', App.pushSubs);
 }
 async function ghApi(path, opt = {}) {
   const res = await fetch('https://api.github.com' + path, Object.assign({}, opt, {
@@ -130,6 +132,7 @@ async function cloudConnect(token) {
       compare: (data.compare && data.compare.length ? data.compare : App.cmp),
       alerts: Object.assign({}, App.alerts, data.alerts || {}),
       settings: Object.assign({}, App.notify, data.settings || {}),
+      push: [...new Map([...(data.push || []), ...(App.pushSubs || [])].map((x) => [x.endpoint, x])).values()],
     };
     applyState(merged);
   }
