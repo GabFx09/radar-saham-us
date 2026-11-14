@@ -324,3 +324,14 @@ pre.code { max-width: 100%; }
 .scn-h { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .scn .bar { margin-bottom: 4px; }
 .warn { color: var(--warn); }
+
+/* ---- dana masuk besar */
+.bf-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 0 18px; }
+.bf-row { display: grid; grid-template-columns: 52px 92px 62px 64px 86px minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); color: inherit; text-decoration: none; font-size: 13px; white-space: nowrap; }
+.bf-row > * { overflow: hidden; text-overflow: ellipsis; }
+.bf-row .tag { justify-self: start; }
+@media (max-width: 480px) { .bf-row { grid-template-columns: 48px 84px 56px 58px 78px; } .bf-row .tag { display: none; } }
+.bf-row:hover { background: var(--surface-2); }
+.today-flow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 8px 10px; margin: 0 0 10px; border: 1px solid var(--border); border-left: 3px solid var(--text-3); font-size: 13px; }
+.today-flow.in { border-left-color: var(--up); }
+.today-flow.out { border-left-color: var(--down); }

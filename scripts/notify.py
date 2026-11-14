@@ -436,6 +436,15 @@ def digest():
         L.extend(soon)
 
     L.extend(portfolio_lines(cfg, by, rows))
+    try:
+        big, t = big_flows(load_json("live.json") or {}, by)
+        ins = [x for x in big if x["kind"] == "in"][:5]
+        outs = [x for x in big if x["kind"] == "out" and x["sym"] in mine][:5]
+        if ins or outs:
+            L.append("\n<b>💰 DANA BESAR SESI TERAKHIR</b>")
+            L.extend(flow_text(x) for x in ins + outs)
+    except Exception as e:  # noqa: BLE001
+        log(f"aliran dana besar gagal: {e}")
     ip = load_json("ipo.json") or {}
     big = [x for x in ip.get("upcoming") or [] if x.get("type") == "Perusahaan" and x.get("date")
            and x["date"] <= (dt.date.today() + dt.timedelta(days=8)).isoformat() and (x.get("amount") or 0) >= 50e6]
@@ -530,6 +539,80 @@ def digest():
     log("Ringkasan terkirim." if TOKEN else "")
 
 
+# ----------------------------------------------------------------------------- dana masuk/keluar besar
+def big_flows(live, by, fresh_min=None):
+    """Daftar saham dengan dana masuk/keluar besar dari live.json (bar 15 menit)."""
+    import aliran
+    out = []
+    t = live.get("stocks_t")
+    if not t:
+        return out, None
+    if fresh_min is not None:
+        age = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds() / 60
+        if age > fresh_min:
+            return out, t
+    for sym, q in (live.get("stocks") or {}).items():
+        if len(q) < 5 or sym not in by:
+            continue
+        kind, strong = aliran.big_flow(q[2], q[3], q[4], q[1])
+        if kind:
+            out.append({"sym": sym, "kind": kind, "strong": strong, "p": q[0], "chg": q[1], "rv": q[2], "net": q[3], "nr": q[4]})
+    out.sort(key=lambda x: -abs(x["net"]))
+    return out, t
+
+
+def flow_text(x, name=True):
+    jt = abs(x["net"]) / 1e6
+    amt = f"{jt / 1000:,.2f} miliar" if jt >= 1000 else f"{jt:,.0f} jt"
+    return (f"<b>{esc(x['sym'])}</b> {usd(x['p'])} ({pct(x['chg'], 1)}) · volume {x['rv']:.1f}× normal · "
+            f"tekanan {'beli' if x['kind'] == 'in' else 'jual'} {abs(x['nr']) * 100:.0f}% · perkiraan "
+            f"{'+' if x['kind'] == 'in' else '−'}${amt}" + (" · <b>sangat besar</b>" if x["strong"] else ""))
+
+
+def flow_alerts(cfg, state, held, today):
+    st = cfg["settings"]
+    if st.get("flow") is False:
+        return
+    live = load_json("live.json") or {}
+    if not live.get("market_open"):
+        return
+    d = load_json("stocks.json") or {"stocks": []}
+    by = {s["sym"]: s for s in d["stocks"]}
+    big, _ = big_flows(live, by, fresh_min=45)
+    if not big:
+        log("Tidak ada dana masuk/keluar besar.")
+        return
+    sent = state.setdefault("flow_sent", {})
+    for k in [k for k, v in sent.items() if v < today]:
+        del sent[k]
+    mine = set(cfg["watchlist"]) | held
+    # 1) saham milik / pantauan: masuk & keluar
+    for x in big:
+        if x["sym"] not in mine or muted(state, x["sym"]):
+            continue
+        key = f"{x['sym']}:{x['kind']}"
+        if key in sent:
+            continue
+        sent[key] = today
+        own = x["sym"] in held
+        title = (f"💰 Dana masuk besar · {x['sym']}" if x["kind"] == "in" else f"💸 Dana keluar besar · {x['sym']}") + (" · portofolio" if own else "")
+        lines = [flow_text(x)]
+        if x["kind"] == "out" and own:
+            lines.append("Tekanan jual besar pada saham yang Anda miliki — cek berita & saran penasihat.")
+        deliver("flow", title, lines, f"{SITE}#/s/{x['sym']}", x["sym"],
+                prio="tinggi" if own and (x["kind"] == "out" or x["strong"]) else "normal", tombol=sym_buttons(x["sym"], cfg))
+    # 2) seluruh pasar: dana masuk besar ke saham Buy/Strong Buy (sekali per saham per hari)
+    if st.get("flow_market", True):
+        top = [x for x in big if x["kind"] == "in" and x["sym"] not in mine and f"{x['sym']}:in" not in sent
+               and by[x["sym"]]["rating"] in ("STRONG BUY", "BUY")][:5]
+        if top:
+            for x in top:
+                sent[f"{x['sym']}:in"] = today
+            deliver("flow", "💰 Dana masuk besar ke saham Buy", [flow_text(x) + f" · {esc(by[x['sym']]['rating'])} skor {by[x['sym']]['score']:.0f}" for x in top],
+                    f"{SITE}#/", None)
+    log(f"Aliran dana besar: {len(big)} saham.")
+
+
 # ----------------------------------------------------------------------------- alert intraday
 def alerts():
     gid, cfg, state = user_config()
@@ -558,6 +641,10 @@ def alerts():
     except Exception as e:  # noqa: BLE001
         log(f"Berita gagal: {e}")
     held = {h["sym"] for h in cfg.get("holdings") or [] if h.get("sym")}
+    try:
+        flow_alerts(cfg, state, held, today)
+    except Exception as e:  # noqa: BLE001
+        log(f"Alert aliran dana gagal: {e}")
     syms = sorted((set(cfg["watchlist"]) | set(cfg["alerts"].keys()) | held) - {x for x in (state.get("mute") or {}) if muted(state, x)})
     ny = dt.datetime.now(dt.timezone(dt.timedelta(hours=-5)))
     mins = ny.hour * 60 + ny.minute

@@ -289,6 +289,7 @@ function renderHome(el) {
     ${m ? `<p class="small muted" style="margin:10px 2px 0">${Math.round(m.breadth * 100)}% saham di atas MA200 · SPY ${m.above_sma200 >= 0 ? 'di atas' : 'di bawah'} MA200 (${fmt.pct(m.above_sma200)}) · RSI ${fmt.num(m.rsi, 0)}</p>` : ''}
 
     ${makroHomeStrip()}
+    ${bigFlowHome()}
 
     <section class="section">
       <div class="section-head"><div><h2>Pilihan Teratas</h2><p>Lolos semua saringan: fundamental kuat, valuasi menarik, tren mendukung</p></div>

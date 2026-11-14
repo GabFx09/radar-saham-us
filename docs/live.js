@@ -65,6 +65,7 @@ function liveLabel() {
   loadMakro = async function () { const m = await _lm(); applyLive(); return m; };
 
   const refresh = (force) => loadLive().then((changed) => {
+    document.querySelectorAll('.today-flow-slot').forEach((el) => { const s = App.bySym[el.dataset.sym]; if (s) el.innerHTML = todayFlowLine(s); });
     if (!changed && !force) return;
     tickClock();
     buildTape();

@@ -18,6 +18,7 @@ import pandas as pd
 import yfinance as yf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import aliran  # noqa: E402
 import makro  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,7 +75,7 @@ def prev_close(c, rate=False, fx24=False):
     return float(prev.iloc[-1]) if len(prev) else None
 
 
-def fetch(symbols, period="5d", interval="15m"):
+def fetch(symbols, period="5d", interval="15m", full=False):
     out = {}
     for i in range(0, len(symbols), 150):
         part = symbols[i:i + 150]
@@ -94,7 +95,7 @@ def fetch(symbols, period="5d", interval="15m"):
                 sub = df[s] if isinstance(df.columns, pd.MultiIndex) else df
                 c = sub["Close"].dropna()
                 if len(c):
-                    out[s] = c
+                    out[s] = sub.dropna(subset=["Close"]) if full else c
             except Exception:  # noqa: BLE001
                 pass
     missing = [s for s in symbols if s not in out]
@@ -105,9 +106,10 @@ def fetch(symbols, period="5d", interval="15m"):
                              threads=False, progress=False, prepost=False)
             for s in missing:
                 try:
-                    c = (df[s] if isinstance(df.columns, pd.MultiIndex) else df)["Close"].dropna()
+                    sub = df[s] if isinstance(df.columns, pd.MultiIndex) else df
+                    c = sub["Close"].dropna()
                     if len(c):
-                        out[s] = c
+                        out[s] = sub.dropna(subset=["Close"]) if full else c
                 except Exception:  # noqa: BLE001
                     pass
         except Exception:  # noqa: BLE001
@@ -143,25 +145,35 @@ def main():
     # ---- saham: saat bursa buka, atau sekali setelah tutup (bila data saham lama dari sesi sebelumnya)
     stocks = old.get("stocks") or {}
     stocks_t = old.get("stocks_t")
+    stocks_day = old.get("stocks_day")
     need_after = weekday and mins > 960 and (not stocks_t or stocks_t < now.strftime("%Y-%m-%dT") + "20:00")
-    if market_open or need_after or not stocks:
+    old_fmt = bool(stocks) and all(len(v) < 5 for v in list(stocks.values())[:20])  # format lama tanpa aliran dana
+    if market_open or need_after or not stocks or old_fmt:
         try:
             with open(os.path.join(ROOT, "docs", "data", "stocks.json"), encoding="utf-8") as fh:
                 syms = [x["sym"] for x in json.load(fh)["stocks"]]
         except Exception:  # noqa: BLE001
             syms = []
-        sp = fetch(syms, period="5d", interval="15m")
-        new = {}
-        for s, c in sp.items():
+        sp = fetch(syms, period="5d", interval="15m", full=True)
+        new, nbig, sday = {}, 0, None
+        for s, df in sp.items():
+            c = df["Close"]
             last = clean_last(c)
             pc = prev_close(c)
             if last:
-                new[s] = [_r(last, 2), _r(last / pc - 1 if pc else None, 4)]
+                chg = last / pc - 1 if pc else None
+                row = [_r(last, 2), _r(chg, 4)]
+                it = aliran.intraday(df)
+                if it:  # [harga, chg1d, volume relatif, dana bersih $, tekanan beli -1..1]
+                    row += [it[1], it[2], it[3]]
+                    sday = max(sday or it[0], it[0])
+                    nbig += aliran.big_flow(it[1], it[2], it[3], chg)[0] is not None
+                new[s] = row
         if len(new) > 0.5 * max(1, len(syms)):
-            stocks, stocks_t = new, now.strftime("%Y-%m-%dT%H:%MZ")
-        log(f"saham: {len(new)}/{len(syms)}")
+            stocks, stocks_t, stocks_day = new, now.strftime("%Y-%m-%dT%H:%MZ"), sday
+        log(f"saham: {len(new)}/{len(syms)} · aliran dana besar: {nbig}")
     out = {"t": now.strftime("%Y-%m-%dT%H:%MZ"), "market_open": market_open, "assets": assets,
-           "stocks": stocks, "stocks_t": stocks_t}
+           "stocks": stocks, "stocks_t": stocks_t, "stocks_day": stocks_day}
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(out, fh, separators=(",", ":"))
     log(f"live.json ditulis · IDR={assets.get('IDR=X', {}).get('p')} · bursa {'BUKA' if market_open else 'tutup'}")

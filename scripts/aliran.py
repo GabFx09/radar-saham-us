@@ -138,3 +138,49 @@ def score(fl, inst=None, short=None):
     if not parts:
         return None
     return round(sum(v * w for v, w in parts) / sum(w for _, w in parts), 1)
+
+
+# ---------------------------------------------------------------- intraday (bar 15 menit)
+BIG_RV, BIG_NR, BIG_CHG, BIG_MIN_USD = 2.0, 0.25, 0.01, 5e6
+
+
+def intraday(df):
+    """Volume relatif hari ini vs rata-rata 4 hari sebelumnya sampai jam yang sama, dan perkiraan aliran dana bersih hari ini.
+    df: bar 15 menit (High, Low, Close, Volume). Hasil: (tanggal, rv, net_usd, net_ratio) atau None."""
+    try:
+        d = df[["High", "Low", "Close", "Volume"]].astype(float).dropna()
+    except Exception:  # noqa: BLE001
+        return None
+    d = d[d["Volume"] > 0]
+    if len(d) < 8:
+        return None
+    idx = d.index
+    if getattr(idx, "tz", None) is not None:
+        idx = idx.tz_convert("America/New_York")
+    days = pd.Series([x.date() for x in idx], index=d.index)
+    last = days.iloc[-1]
+    today = d[days == last]
+    n = len(today)
+    prev = sorted(set(days[days < last]))[-4:]
+    if not prev or not n:
+        return None
+    base = float(np.mean([d[days == p]["Volume"].iloc[:n].sum() for p in prev]))
+    H, L, C, V = today["High"], today["Low"], today["Close"], today["Volume"]
+    rng = (H - L).replace(0, np.nan)
+    mfm = (((C - L) - (H - C)) / rng).fillna(0).clip(-1, 1)
+    tp = (H + L + C) / 3
+    net = float((mfm * tp * V).sum())
+    gross = float((tp * V).sum())
+    return last.isoformat(), (_r(V.sum() / base, 2) if base else None), _r(net, -3), (_r(net / gross, 3) if gross else None)
+
+
+def big_flow(rv, net, nr, chg):
+    """'in' = dana masuk besar, 'out' = dana keluar besar, None = biasa. Kuat bila volume >= 3x & tekanan >= 35%."""
+    if rv is None or net is None or nr is None or chg is None or rv < BIG_RV or abs(net) < BIG_MIN_USD:
+        return None, False
+    strong = rv >= 3 and abs(nr) >= 0.35
+    if nr >= BIG_NR and chg >= BIG_CHG:
+        return "in", strong
+    if nr <= -BIG_NR and chg <= -BIG_CHG:
+        return "out", strong
+    return None, False
