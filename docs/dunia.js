@@ -202,7 +202,7 @@ async function renderDunia(el) {
   const wait = setInterval(() => {
     if (!App.data) return;
     clearInterval(wait);
-    loadAllForTiming().then(() => { const v = parseHash().parts[0] || 'home'; if (v === 'home' || v === 'portofolio') render();
+    loadAllForTiming().then(() => { const v = parseHash().parts[0] || 'home'; if (v === 'home' || v === 'portofolio' || v === 'makro') render();
     else if (v === 's') { const t = document.querySelector('.d-sym'), s = App.data.stocks.find((x) => x.sym === decodeURIComponent(parseHash().parts[1] || '').toUpperCase()); if (t && s && !t.querySelector('a.tag')) t.insertAdjacentHTML('beforeend', ' ' + stanceTag(s)); } });
   }, 200);
 })();

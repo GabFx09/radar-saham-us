@@ -48,9 +48,16 @@ function navActive(a, view) {
 function termAfterRender(view) {
   const sub = $('#subnav');
   if (!sub) return;
-  sub.innerHTML = MARKET_VIEWS.includes(view) ? `<nav class="mtabs" aria-label="Analisis pasar">${[
-    ['makro', 'Makro'], ['dunia', 'Waktu Masuk'], ['heatmap', 'Heatmap'], ['berita', 'Berita'], ['ipo', 'IPO'], ['siklus', 'Siklus 100 thn'], ['geo', 'Geopolitik'], ['strategi', 'Strategi'], ['bandingkan', 'Bandingkan']]
+  sub.innerHTML = MARKET_VIEWS.includes(view) ? `<nav class="mtabs mk-tabs" aria-label="Analisis pasar">${[
+    ['makro', '📊 Makro'], ['dunia', '🌍 Waktu Masuk'], ['heatmap', '🟩 Heatmap'], ['berita', '📰 Berita'], ['ipo', '🆕 IPO'], ['siklus', '🔄 Siklus'], ['geo', '🛡️ Geopolitik'], ['strategi', '🧪 Strategi'], ['bandingkan', '⚖️ Bandingkan']]
     .map(([k, n]) => `<a href="#/${k}" class="${k === view ? 'on' : ''}">${n}</a>`).join('')}</nav>` : '';
+  // tab aktif selalu terlihat (di HP deretan tab digulir ke samping)
+  const nav = sub.querySelector('.mk-tabs'), on = nav && nav.querySelector('a.on');
+  if (nav && on) {
+    nav.scrollLeft = Math.max(0, on.offsetLeft - (nav.clientWidth - on.offsetWidth) / 2);
+    const edge = () => { nav.classList.toggle('more-r', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 4); nav.classList.toggle('more-l', nav.scrollLeft > 4); };
+    nav.onscroll = edge; edge();
+  }
 }
 
 /* ------------------------------------------------------------ command palette */

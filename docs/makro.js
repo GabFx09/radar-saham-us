@@ -67,7 +67,7 @@ async function renderMakro(el) {
   const fg = mk.fg, cv = mk.curve, rot = mk.rotation || [];
 
   // ---- Fear & Greed
-  const fgHtml = fg ? `<div class="card card-pad">
+  const fgHtml = fg ? `<div class="card card-pad" id="mk-fg">
     <h3 class="card-title">Indeks Fear &amp; Greed (Radar)</h3>
     <div class="fg-wrap">
       <div>${fgGauge(fg.now)}<div class="fg-num" style="color:${fgColor(fg.now)}">${Math.round(fg.now)}</div>
@@ -88,13 +88,13 @@ async function renderMakro(el) {
   // ---- lintas aset
   const val = (r) => r.rate ? r.last.toFixed(3) + '%' : r.last >= 1000 ? r.last.toLocaleString('en-US', { maximumFractionDigits: 0 }) : r.last.toFixed(r.last < 10 ? 4 : 2);
   const ch = (r, k) => `<td class="${cls(r[k])} ${['m3', 'y1'].includes(k) ? 'hm' : ''}">${r.rate ? bp(r[k]) : fmt.pct(r[k], k === 'd1' ? 2 : 1)}</td>`;
-  const xaHtml = `<div class="card card-pad">
+  const xaHtml = `<div class="card card-pad" id="mk-xa">
     <h3 class="card-title">Monitor Lintas Aset</h3>
     <div class="cmp-scroll"><table class="xa-table">
-      <tr><th>Aset</th><th>Terakhir</th><th>1H</th><th>1M</th><th>1B</th><th class="hm">3B</th><th>YTD</th><th class="hm">1T</th><th class="hm">90 hari</th></tr>
+      <tr><th>Aset</th><th>Terakhir</th><th>1 hr</th><th>1 mgg</th><th>1 bln</th><th class="hm">3 bln</th><th>YTD</th><th class="hm">1 thn</th><th class="hm">90 hari</th></tr>
       ${mk.assets.map((g) => `<tr class="grp"><td colspan="9">${esc(g.name)}</td></tr>` + g.rows.map((r) => `<tr><td class="nm"><b>${esc(r.name)}</b><small>${esc(r.sym)}</small></td><td><b>${val(r)}</b></td>${ch(r, 'd1')}${ch(r, 'w1')}${ch(r, 'm1')}${ch(r, 'm3')}${ch(r, 'ytd')}${ch(r, 'y1')}<td class="sp hm">${miniSpark(r.spark)}</td></tr>`).join('')).join('')}
     </table></div>
-    <p class="small faint" style="margin:8px 0 0">Imbal hasil obligasi dalam basis poin (bp). H = hari, M = minggu, B = bulan, T = tahun. USD/IDR naik = rupiah melemah.</p>
+    <p class="small faint" style="margin:8px 0 0">Perubahan imbal hasil obligasi dalam basis poin (bp, 100 bp = 1%). YTD = sejak awal tahun. USD/IDR naik = rupiah melemah.</p>
   </div>`;
 
   // ---- kurva yield
@@ -122,7 +122,7 @@ async function renderMakro(el) {
     if (inverted) status = `<b class="down">TERBALIK (INVERSI)</b> — spread 10T–3B ${sp.toFixed(2)} pp. Secara historis inversi mendahului resesi rata-rata ~${avgLead} bulan.`;
     else if (li && li.end && li.months_since_end != null && li.months_since_end <= 24) status = `<b class="warn" style="color:var(--warn)">NORMAL KEMBALI SETELAH INVERSI</b> — kurva terbalik ${li.start} s.d. ${li.end} (${(cv.inversions.at(-1) || {}).months || '?'} bln), kembali positif ${li.months_since_end} bulan lalu. Dalam sejarah, resesi sering dimulai justru setelah kurva kembali normal ("re-steepening"), tapi sinyal ini juga bisa meleset.`;
     else status = `<b class="up">NORMAL</b> — spread 10T–3B ${sp != null ? '+' + sp.toFixed(2) : '–'} pp. Tidak ada sinyal resesi dari kurva yield.`;
-    curveHtml = `<div class="card card-pad">
+    curveHtml = `<div class="card card-pad" id="mk-curve">
       <h3 class="card-title">Kurva Yield Treasury AS &amp; Sinyal Resesi</h3>
       <p class="small" style="margin:0 0 10px;line-height:1.6">${status}</p>
       ${snapSvg}
@@ -130,8 +130,9 @@ async function renderMakro(el) {
       ${cv.series ? `<div class="mk-label" style="margin-top:14px">Spread 10 thn − 3 bln sejak ${cv.series[0][0].slice(0, 4)} (merah = resesi NBER)</div>
       ${lineChart([{ v: cv.series.map((r) => r[1]), color: 'var(--accent)', w: 1.5 }], { dates: cv.series.map((r) => r[0]), zero: 0, h: 190, w: 600, xlabels: [0, 0.25, 0.5, 0.75, 1], fmtX: (d) => d.slice(0, 4), fmtY: (v) => v.toFixed(0) + 'pp',
         bands: (cv.recessions || []).map(([a, b]) => [a, b, 'var(--down)', 0.28]) })}
-      <div class="cmp-scroll" style="margin-top:10px"><table class="hold-table"><tr><th>Resesi</th><th>Inversi pertama</th><th class="r">Jeda</th></tr>
-        ${(cv.leads || []).map((l) => `<tr><td class="mono">${l.rec}</td><td class="mono">${l.inv || '<span class="faint">tidak didahului</span>'}</td><td class="r mono">${l.lead != null ? l.lead + ' bln' : '–'}</td></tr>`).join('')}</table></div>
+      <details style="margin-top:10px"><summary class="small"><b>Riwayat resesi &amp; inversi</b> (${(cv.leads || []).length} resesi sejak 1969)</summary>
+      <div class="cmp-scroll" style="margin-top:6px"><table class="hold-table"><tr><th>Resesi</th><th>Inversi pertama</th><th class="r">Jeda</th></tr>
+        ${(cv.leads || []).map((l) => `<tr><td class="mono">${l.rec}</td><td class="mono">${l.inv || '<span class="faint">tidak didahului</span>'}</td><td class="r mono">${l.lead != null ? l.lead + ' bln' : '–'}</td></tr>`).join('')}</table></div></details>
       <p class="small faint" style="margin:8px 0 0">${leads.length} dari ${(cv.leads || []).length} resesi sejak 1969 didahului inversi (rata-rata ${avgLead} bulan sebelumnya)${cv.false_pos && cv.false_pos.length ? `; inversi yang tidak diikuti resesi dalam 30 bulan: ${cv.false_pos.join(', ')}` : ''}. Sumber: ^TNX &amp; ^IRX (Yahoo Finance), tanggal resesi NBER.</p>` : ''}
     </div>`;
   }
@@ -164,26 +165,62 @@ async function renderMakro(el) {
           <text x="${(X(last[0]) + 8).toFixed(1)}" y="${(Y(last[1]) + 4).toFixed(1)}" class="fc-lbl" style="fill:var(--text)">${esc(r.sym)}</text>`; }).join('')}
     </svg>`;
     const sorted = [...rot].sort((a, b) => (b.m3 ?? -9) - (a.m3 ?? -9));
-    rotHtml = `<div class="grid-2"><div class="card card-pad">
+    rotHtml = `<div class="grid-2" id="mk-rot"><div class="card card-pad">
       <h3 class="card-title">Rotasi Sektor (Relative Rotation Graph)</h3>
       <p class="small muted" style="margin:-4px 0 8px">Ekor = jejak 6 minggu terakhir. Sektor biasanya berputar searah jarum jam: Membaik → Memimpin → Melemah → Tertinggal.</p>
       ${svg}</div>
       <div class="card card-pad"><h3 class="card-title">Kinerja ETF Sektor</h3>
       <div class="cmp-scroll"><table class="xa-table">
-        <tr><th>Sektor</th><th>Kuadran</th><th>1M</th><th>1B</th><th>3B</th><th class="hm">YTD</th><th class="hm">1T</th><th>vs SPY 3B</th></tr>
+        <tr><th>Sektor</th><th>Kuadran</th><th>1 mgg</th><th>1 bln</th><th>3 bln</th><th class="hm">YTD</th><th class="hm">1 thn</th><th>vs S&amp;P 3 bln</th></tr>
         ${sorted.map((r) => `<tr><td class="nm"><b>${esc(r.name)}</b><small>${esc(r.sym)}</small></td><td style="color:${qc[r.quad]};font-weight:700">${esc(r.quad)}</td><td class="${cls(r.w1)}">${fmt.pct(r.w1, 1)}</td><td class="${cls(r.m1)}">${fmt.pct(r.m1, 1)}</td><td class="${cls(r.m3)}">${fmt.pct(r.m3, 1)}</td><td class="hm ${cls(r.ytd)}">${fmt.pct(r.ytd, 0)}</td><td class="hm ${cls(r.y1)}">${fmt.pct(r.y1, 0)}</td><td class="${cls(r.rs3m)}">${fmt.pct(r.rs3m, 1)}</td></tr>`).join('')}
       </table></div>
-      <p class="small faint" style="margin:8px 0 0">Diurutkan menurut kinerja 3 bulan. "vs SPY 3B" = selisih return terhadap S&amp;P 500.</p>
+      <p class="small faint" style="margin:8px 0 0">Diurutkan menurut kinerja 3 bulan. "vs S&amp;P 3 bln" = selisih return terhadap S&amp;P 500.</p>
     </div></div>`;
   }
 
   el.innerHTML = `<div class="fade-in">
     <h1 class="page-title">Monitor Makro</h1>
     <p class="page-sub">Sentimen, suku bunga, sinyal resesi, rotasi sektor, dan lintas aset · data ${fmt.date(mk.generated || App.data.generated, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+    ${makroSummary(mk)}
     <div class="grid-2">${fgHtml}${curveHtml}</div>
     <section class="section">${xaHtml}</section>
     <section class="section">${rotHtml}</section>
     <p class="disclaimer">Indikator makro membantu membaca kondisi pasar, bukan alat penentu waktu jual-beli yang presisi.</p>
+  </div>`;
+}
+
+/** ringkasan singkat kondisi pasar dari data makro (dibaca dulu sebelum grafik-grafik di bawah) */
+function makroSummary(mk) {
+  const rows = Object.fromEntries((mk.assets || []).flatMap((g) => g.rows).map((r) => [r.sym, r]));
+  const L = [];
+  const fg = mk.fg;
+  if (fg) {
+    const d = fg.w1 != null ? fg.now - fg.w1 : null;
+    L.push(['🧭', 'Sentimen', `Fear &amp; Greed <b style="color:${fgColor(fg.now)}">${Math.round(fg.now)} · ${esc(fg.label)}</b>${d != null && Math.abs(d) >= 3 ? ` (${d > 0 ? 'naik' : 'turun'} ${Math.abs(Math.round(d))} dari minggu lalu)` : ''}${fg.now < 35 ? ' — investor takut; secara historis sering jadi peluang beli bertahap' : fg.now > 65 ? ' — investor serakah; hati-hati mengejar harga' : ''}.`, '#mk-fg']);
+  }
+  const vix = rows['^VIX'];
+  if (vix) L.push(['🌊', 'Gejolak', `VIX <b>${vix.last.toFixed(1)}</b> — ${vix.last < 15 ? 'pasar tenang' : vix.last < 20 ? 'normal' : vix.last < 30 ? 'waspada, pergerakan harian lebih liar' : 'panik, gejolak sangat tinggi'}.`, '#mk-xa']);
+  const spy = rows.SPY;
+  if (spy) L.push(['📈', 'S&amp;P 500', `<span class="${cls(spy.m1)}">${fmt.pct(spy.m1, 1)}</span> sebulan · <span class="${cls(spy.ytd)}">${fmt.pct(spy.ytd, 1)}</span> sejak awal tahun.`, '#mk-xa']);
+  const tnx = rows['^TNX'], cv = mk.curve;
+  if (tnx) {
+    let cs = '';
+    if (cv && cv.spread_now != null) {
+      const li = cv.last_inv;
+      cs = cv.spread_now < 0 ? ' · kurva <b class="down">terbalik</b> (sinyal resesi)' : li && li.months_since_end != null && li.months_since_end <= 24 ? ' · kurva <b style="color:var(--warn)">baru normal setelah inversi</b> (waspada)' : ' · kurva normal';
+    }
+    L.push(['🏦', 'Suku bunga', `Obligasi AS 10 thn <b>${tnx.last.toFixed(2)}%</b> (${bp(tnx.m1)} sebulan)${cs}.`, '#mk-curve']);
+  }
+  const rot = (mk.rotation || []).filter((r) => r.m3 != null).sort((a, b) => b.m3 - a.m3);
+  if (rot.length > 2) L.push(['🔄', 'Sektor', `Terkuat 3 bln: <b class="up">${esc(rot[0].name)}</b> ${fmt.pct(rot[0].m3, 1)} · terlemah: <b class="down">${esc(rot[rot.length - 1].name)}</b> ${fmt.pct(rot[rot.length - 1].m3, 1)}.`, '#mk-rot']);
+  const idr = rows['IDR=X'];
+  if (idr) L.push(['💱', 'Rupiah', `USD/IDR <b>${Math.round(idr.last).toLocaleString('id-ID')}</b> — rupiah ${(idr.m1 || 0) > 0.002 ? `<span class="down">melemah ${fmt.pct(idr.m1, 1, false)}</span>` : (idr.m1 || 0) < -0.002 ? `<span class="up">menguat ${fmt.pct(-idr.m1, 1, false)}</span>` : 'stabil'} sebulan${(idr.m1 || 0) > 0.002 ? ' (nilai saham AS Anda dalam rupiah ikut naik)' : ''}.`, '#mk-xa']);
+  if (!L.length) return '';
+  const T = typeof timing === 'function' && App.dunia ? timing() : null;
+  return `<div class="card card-pad mk-sum">
+    <h3 class="card-title">Ringkasan Hari Ini</h3>
+    <ul class="mk-sum-list">${L.map(([i, k, t, h]) => `<li><span class="ic">${i}</span><div><b class="k">${k}</b> ${t} <a class="link small" href="${h}" onclick="var e=document.querySelector('${h}');if(e)e.scrollIntoView({behavior:'smooth',block:'start'});return false">detail ›</a></div></li>`).join('')}</ul>
+    ${T ? `<p class="small" style="margin:10px 0 0">🌍 Kesimpulan gabungan: <a class="link" href="#/dunia">Waktu Masuk <b style="color:${timingColor(T.label)}">${T.label}</b> (skor ${Math.round(T.score)}) ›</a></p>` : ''}
   </div>`;
 }
 
