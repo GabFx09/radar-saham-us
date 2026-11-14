@@ -366,30 +366,93 @@ function applyFilters() {
   out.sort((a, b) => key(b) - key(a));
   return out;
 }
+/* metrik tambahan yang ditampilkan sesuai urutan yang dipilih (bila belum terlihat di baris) */
+const SORT_METRIC = {
+  quality: ['Kualitas', (s) => Math.round(s.pillars.quality)],
+  value: ['Valuasi', (s) => Math.round(s.pillars.value)],
+  growth: ['Pertumbuhan', (s) => Math.round(s.pillars.growth)],
+  health: ['Kesehatan', (s) => Math.round(s.pillars.health)],
+  div: ['Dividen', (s) => (s.m.div_yield ? fmt.pct(s.m.div_yield, 1, false) : '–')],
+  mcap: ['Kap. pasar', (s) => fmt.big(s.mcap)],
+  geo: ['Geopolitik', (s) => (s.geo ? Math.round(s.geo.score) : '–')],
+  flow: ['Aliran dana', (s) => (s.flow != null ? Math.round(s.flow) : '–')],
+  flowlow: ['Aliran dana', (s) => (s.flow != null ? Math.round(s.flow) : '–')],
+  prob: ['Peluang untung', (s) => (s.q && s.q.mc ? Math.round(s.q.mc.p_up * 100) + '%' : '–')],
+  sharpe: ['Sharpe', (s) => (s.q && s.q.sharpe != null ? s.q.sharpe.toFixed(2) : '–')],
+  lowvol: ['Volatilitas', (s) => (s.q && s.q.vol != null ? Math.round(s.q.vol * 100) + '%' : '–')],
+};
+function scrRow(s, sort) {
+  const up = s.val ? s.val.upside : null;
+  const sm = SORT_METRIC[sort];
+  const num = (v, lbl) => `<div class="c-num" style="color:${scoreColor(v)}" title="${lbl}">${Math.round(v)}</div>`;
+  return `<a class="srow" href="#/s/${encodeURIComponent(s.sym)}">
+    ${ring(s.score)}
+    <div class="s-main">
+      <div class="row-sym">${esc(s.sym)} ${ratingBadge(s.rating)}${App.watch.has(s.sym) ? ' <span style="color:var(--gold)" title="di watchlist">★</span>' : ''}</div>
+      <div class="row-name">${esc(s.name)}</div>
+      <div class="s-meta"><span>${esc(s.sector)}</span><span class="m-sc">Fund <b style="color:${scoreColor(s.fund)}">${Math.round(s.fund)}</b></span><span class="m-sc">Tek <b style="color:${scoreColor(s.tech)}">${Math.round(s.tech)}</b></span>${sm ? `<span class="m-sort">${sm[0]} <b>${sm[1](s)}</b></span>` : ''}</div>
+    </div>
+    ${num(s.fund, 'Fundamental')}${num(s.pillars.value, 'Valuasi')}${num(s.tech, 'Teknikal')}
+    <div class="c-num">${s.m.pe_fwd ? fmt.x(s.m.pe_fwd) : '–'}</div>
+    <div class="c-spark">${spark(s.spark)}</div>
+    <div class="s-right">
+      <div class="s-price">${fmt.usd(s.price)}</div>
+      <div class="s-chg ${cls(s.chg1d)}">${s.chg1d == null ? '' : fmt.pct(s.chg1d, 1)} <small>hari ini</small></div>
+      <div class="s-pot ${cls(up)}" title="Potensi ke nilai wajar model">${up == null ? '<small>potensi –</small>' : `<small>potensi</small> ${up >= 0 ? '▲' : '▼'}${fmt.pct(Math.abs(up), 0, false)}`}</div>
+    </div>
+  </a>`;
+}
+function filterChips(f) {
+  const C = [];
+  if (f.q) C.push(['q', `Cari: "${f.q}"`]);
+  f.ratings.forEach((v) => C.push(['ratings:' + v, v]));
+  f.caps.forEach((v) => C.push(['caps:' + v, (CAPS[v] || v).split(' ')[0] + ' cap']));
+  f.sectors.forEach((v) => C.push(['sectors:' + v, v]));
+  if (f.minFund > 0) C.push(['minFund', `Fundamental ≥ ${f.minFund}`]);
+  if (f.minUpside > -50) C.push(['minUpside', `Potensi ≥ ${f.minUpside}%`]);
+  if (f.maxPE > 0) C.push(['maxPE', `P/E ≤ ${f.maxPE}x`]);
+  if (f.minROE > 0) C.push(['minROE', `ROE ≥ ${f.minROE}%`]);
+  if (f.minPio > 0) C.push(['minPio', `Piotroski ≥ ${f.minPio}`]);
+  if (f.minDiv > 0) C.push(['minDiv', `Dividen ≥ ${f.minDiv}%`]);
+  if (f.minGeo > 0) C.push(['minGeo', `Geopolitik ≥ ${f.minGeo}`]);
+  return C;
+}
 function renderScreener(el) {
   const f = App.filters;
   const pr = PRESETS.find((p) => p.id === f.preset) || PRESETS[0];
   el.innerHTML = `<div class="fade-in">
     <h1 class="page-title">Screener</h1>
-    <p class="page-sub">${esc(pr.desc)}</p>
-    <div class="chips" id="presetChips">${PRESETS.map((p) => `<button class="chip ${p.id === f.preset ? 'active' : ''}" data-p="${p.id}">${esc(p.name)}</button>`).join('')}</div>
-    <div class="toolbar">
+    <p class="page-sub">${App.data.stocks.length} saham AS (S&amp;P 500 + MidCap 400) dinilai dari fundamental, valuasi, teknikal, analis &amp; geopolitik. Pilih strategi siap pakai atau atur filter sendiri.</p>
+    <div class="mk-label" style="margin:10px 0 4px">Strategi</div>
+    <div class="chips scr-presets" id="presetChips">${PRESETS.map((p) => `<button class="chip ${p.id === f.preset ? 'active' : ''}" data-p="${p.id}">${esc(p.name)}</button>`).join('')}</div>
+    ${pr.id !== 'all' ? `<div class="scr-info"><div><b>${esc(pr.name)}</b> — ${esc(pr.desc)}</div><button class="cmp-x" id="presetClear" title="Kembali ke Semua">✕</button></div>` : ''}
+    <div class="scr-tools">
       <label class="input"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="q" type="search" placeholder="Filter ticker / nama" value="${esc(f.q)}" autocomplete="off"></label>
+        <input id="q" type="search" placeholder="Cari ticker / nama" value="${esc(f.q)}" autocomplete="off"></label>
+      <select class="sel" id="sort" aria-label="Urutkan" title="Urutkan">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${k === f.sort ? 'selected' : ''}>↓ ${v[0]}</option>`).join('')}</select>
       <button class="btn" id="openFilter"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filter${activeFilterCount(f) ? ` <span class="dot">${activeFilterCount(f)}</span>` : ''}</button>
     </div>
-    <div class="result-bar"><span id="count"></span>
-      <select class="sel" id="sort" aria-label="Urutkan">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${k === f.sort ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
-    <div class="card list" id="results"></div>
+    <div class="fchips" id="fchips"></div>
+    <div class="rcounts" id="rcounts"></div>
+    <div class="card list scr-list">
+      <div class="srow-head"><div>Skor</div><div>Saham</div><div>Fund.</div><div>Valuasi</div><div>Teknikal</div><div>P/E fwd</div><div>1 tahun</div><div>Harga · potensi</div></div>
+      <div id="results"></div>
+    </div>
     <div style="text-align:center;margin:16px 0" id="moreWrap"></div>
+    <p class="small faint" style="margin:0 0 8px">Skor 0–100 (lingkaran) = gabungan fundamental 65%, teknikal 20%, analis 10%, geopolitik 5%. <b>Potensi</b> = jarak harga ke nilai wajar model. <a class="link" href="#/metode">Cara kerja penilaian ›</a></p>
   </div>`;
 
   const draw = () => {
     const res = applyFilters();
-    $('#count').textContent = `${res.length} saham`;
-    $('#results').innerHTML = res.slice(0, App.shown).map(stockRow).join('') ||
+    // jumlah per rekomendasi (dari hasil sebelum filter rekomendasi) — bisa diketuk
+    const base = f.ratings.length ? (() => { const r0 = f.ratings; f.ratings = []; const x = applyFilters(); f.ratings = r0; return x; })() : res;
+    const cnt = RATINGS.map((r) => [r, base.filter((s) => s.rating === r).length]);
+    $('#rcounts').innerHTML = `<span><b>${res.length}</b> saham</span>` + cnt.map(([r, n]) => `<button class="rc ${f.ratings.includes(r) ? 'on' : ''}" data-r="${r}">${ratingBadge(r)} ${n}</button>`).join('');
+    const chips = filterChips(f);
+    $('#fchips').innerHTML = chips.length ? chips.map(([k, t]) => `<button class="fchip" data-k="${esc(k)}">${esc(t)} ✕</button>`).join('') + '<button class="fchip reset" data-k="__all">Hapus semua</button>' : '';
+    $('#results').innerHTML = res.slice(0, App.shown).map((s) => scrRow(s, f.sort)).join('') ||
       `<div class="empty"><div class="big-ico">🔍</div>Tidak ada saham yang cocok.<br><button class="btn" style="margin-top:12px" id="resetAll">Reset filter</button></div>`;
-    $('#moreWrap').innerHTML = res.length > App.shown ? `<button class="btn" id="more">Tampilkan lebih banyak (${res.length - App.shown})</button>` : '';
+    $('#moreWrap').innerHTML = res.length > App.shown ? `<button class="btn" id="more">Tampilkan ${Math.min(100, res.length - App.shown)} lagi (sisa ${res.length - App.shown})</button>` : '';
     const ra = $('#resetAll');
     if (ra) ra.onclick = () => { App.filters = defaultFilters(); saveFilters(); renderScreener(el); };
     const mb = $('#more');
@@ -402,11 +465,32 @@ function renderScreener(el) {
     if (!b) return;
     f.preset = b.dataset.p;
     const p = PRESETS.find((x) => x.id === f.preset);
-    if (p.sort) f.sort = p.sort;
+    f.sort = p.sort || 'score';
+    App.shown = 50; saveFilters(); renderScreener(el);
+  };
+  const pc = $('#presetClear');
+  if (pc) pc.onclick = () => { f.preset = 'all'; f.sort = 'score'; App.shown = 50; saveFilters(); renderScreener(el); };
+  // gulir chip preset aktif agar terlihat
+  const act = $('#presetChips .chip.active');
+  if (act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest', inline: 'center' });
+  $('#rcounts').onclick = (e) => {
+    const b = e.target.closest('[data-r]');
+    if (!b) return;
+    const r = b.dataset.r;
+    f.ratings = f.ratings.length === 1 && f.ratings[0] === r ? [] : [r];
+    App.shown = 50; saveFilters(); renderScreener(el);
+  };
+  $('#fchips').onclick = (e) => {
+    const b = e.target.closest('[data-k]');
+    if (!b) return;
+    const k = b.dataset.k, d = defaultFilters();
+    if (k === '__all') { App.filters = Object.assign(d, { preset: f.preset, sort: f.sort }); }
+    else if (k.includes(':')) { const [a, v] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)]; f[a] = f[a].filter((x) => x !== v); }
+    else f[k] = d[k];
     App.shown = 50; saveFilters(); renderScreener(el);
   };
   let qt;
-  $('#q').oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { f.q = e.target.value; App.shown = 50; saveFilters(); draw(); }, 120); };
+  $('#q').oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { f.q = e.target.value; App.shown = 50; saveFilters(); draw(); }, 150); };
   $('#sort').onchange = (e) => { f.sort = e.target.value; saveFilters(); draw(); };
   $('#openFilter').onclick = () => openFilterSheet(() => renderScreener(el));
 }
