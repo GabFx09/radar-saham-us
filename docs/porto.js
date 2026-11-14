@@ -151,9 +151,11 @@ function renderPorto(el) {
       <p class="small muted" style="margin:0 0 10px">Saran dari data aplikasi: rekomendasi &amp; nilai wajar model, perubahan fundamental sejak dibeli, trailing stop berbasis volatilitas, risiko simulasi, dan bobot portofolio. Diperbarui setiap update data harian.</p>
       ${rows.slice().sort((a, b) => order[a.adv.act] - order[b.adv.act]).map((r) => `<div class="adv-row"><div class="adv-h">${actBadge(r.adv.act)} <a href="#/s/${encodeURIComponent(r.s.sym)}"><b>${esc(r.s.sym)}</b></a> <span class="faint small">${r.adv.pl == null ? '' : 'U/R ' + fmt.pct(r.adv.pl, 1) + ' · '}${r.adv.dd == null ? '' : 'dari puncak ' + fmt.pct(r.adv.dd, 0) + ' · '}trailing stop ${Math.round(r.adv.trail * 100)}%</span></div>
         <ul>${r.adv.reasons.map((x) => `<li class="${x.s > 0 ? 'up' : x.s < 0 ? 'down' : 'muted'}">${x.s > 0 ? '+' : x.s < 0 ? '−' : '·'} <span>${esc(x.t)}</span></li>`).join('')}</ul></div>`).join('')}
+      ${App.dunia ? (() => { const T = timing(), D = App.dunia.snap; return `<p class="small" style="margin:8px 0 0">🌍 <b>${esc(D.regimeTitle)}</b> · risiko dunia ${D.risk}/100 · <a class="link" href="#/dunia">waktu masuk <b style="color:${timingColor(T.label)}">${T.label}</b></a> — ${T.label === 'Agresif' ? 'saran TAMBAH boleh dijalankan penuh' : T.label === 'Bertahap' ? 'jalankan saran TAMBAH bertahap (2–3 kali)' : 'jalankan saran TAMBAH kecil-kecil &amp; utamakan saran KURANGI/JUAL'}.</p>`; })() : ''}
       <p class="small faint" style="margin:8px 0 0">Bukan perintah jual-beli. Model tidak tahu tujuan, pajak, dan jangka waktu Anda — gunakan sebagai pemeriksaan kedua.</p>
     </div>
     ${rebalanceCard(rows)}
+    ${rows.length ? idrCard(tot.val, expRet, idr) : ''}
     <div class="grid-2" style="margin-top:12px">
       <div class="card card-pad"><h3 class="card-title">Alokasi Sektor</h3>
         <div class="port-wrap"><div class="donut-box">${svg}<div class="donut-c"><b>${rows.length}</b><span>saham</span></div></div>
@@ -321,4 +323,25 @@ function dividendHtml(days) {
         <div style="text-align:right">${ratingBadge(s.rating)}<div class="faint small">${dd <= 0 ? 'hari ini' : dd + ' hari'}</div></div></a>`;
     }).join('')}</div>` : '<p class="small faint">Tidak ada jadwal ex-dividend dalam periode ini.</p>'}
   </div>`;
+}
+
+/* ------------------------------------------------------------ proyeksi portofolio dalam rupiah */
+function idrCard(valUsd, expRet, idrNow) {
+  if (typeof idrScenarios !== 'function' || !valUsd) return '';
+  const X = idrScenarios();
+  const now = idrNow || X.cur;
+  const vol = 0.2;
+  const sc = [
+    ['Optimis', 'saham naik, rupiah menguat', expRet + vol * 0.8, X.bull],
+    ['Dasar', App.dunia ? 'skenario dasar Prakiraan Dunia' : 'proyeksi model', expRet, X.base],
+    ['Pesimis', 'saham turun, rupiah melemah', expRet - vol * 1.2, X.bear],
+  ];
+  const rp = (v) => 'Rp ' + Math.round(v).toLocaleString('id-ID');
+  return `<div class="card card-pad" style="margin-top:12px"><h3 class="card-title">Proyeksi 12 Bulan dalam Rupiah</h3>
+    <p class="small muted" style="margin:0 0 10px">Nilai sekarang <b>${rp(valUsd * now)}</b> (kurs ${Math.round(now).toLocaleString('id-ID')}). Untuk investor rupiah, hasil = return saham (USD) + perubahan kurs USD/IDR.</p>
+    <div class="cmp-scroll"><table class="hold-table"><tr><th>Skenario</th><th class="r">Saham (USD)</th><th class="r">USD/IDR</th><th class="r">Nilai (Rp)</th><th class="r">Hasil rupiah</th></tr>
+    ${sc.map(([n, d, r, fx]) => { const v = valUsd * (1 + r) * fx, g = v / (valUsd * now) - 1;
+      return `<tr><td><b>${n}</b><div class="faint small">${d}</div></td><td class="r mono ${cls(r)}">${fmt.pct(r, 1)}</td><td class="r mono">${Math.round(fx).toLocaleString('id-ID')}</td><td class="r mono">${rp(v)}</td><td class="r mono ${cls(g)}"><b>${fmt.pct(g, 1)}</b></td></tr>`; }).join('')}
+    </table></div>
+    <p class="small faint" style="margin:8px 0 0">Return saham dasar = rata-rata harapan simulasi Monte Carlo portofolio Anda; optimis/pesimis = ±1 standar deviasi kasar. Kurs dasar dari skenario 1 tahun Prakiraan Dunia${App.dunia ? '' : ' (tidak termuat — memakai kurs sekarang)'}. Rupiah melemah justru <i>menambah</i> nilai aset dolar Anda dalam rupiah — saham AS juga berfungsi sebagai lindung nilai kurs.</p></div>`;
 }

@@ -5,7 +5,7 @@
    ===================================================================== */
 'use strict';
 
-const REB_DEF = { maxW: 0.25, n: 0, cash: 0, frac: true, keep: false, floor: 0.6 };
+const REB_DEF = { maxW: 0.25, n: 0, cash: 0, frac: true, keep: false, floor: 0.6, macro: true, regime: false };
 function rebOpts() { return Object.assign({}, REB_DEF, store.get('rebal', {})); }
 
 function conviction(s) {
@@ -68,7 +68,8 @@ function computeRebalance(rows, opt) {
     sel.push({ s: pool.splice(i, 1)[0], held: null });
   }
   // 3. bobot target
-  const items = sel.map((x) => ({ ...x, raw: conviction(x.s) }));
+  const stOf = (s) => (opt.macro && typeof sectorStance === 'function' ? sectorStance(s) : null);
+  const items = sel.map((x) => { const st = stOf(x.s); return { ...x, st, raw: conviction(x.s) * (st ? st.mult : 1) }; });
   let w = capWeights(items, maxW, maxSec);
   // bobot minimal untuk saham lama yang tidak bersaran JUAL (hindari penjualan drastis)
   const floor = Math.min(maxW, (opt.floor ?? 0.6) * maxW);
@@ -82,11 +83,15 @@ function computeRebalance(rows, opt) {
       w = w.map((x, i) => (low[i] ? floor : x * (1 - need / free)));
     }
   }
+  // porsi kas sesuai rezim (skor Waktu Masuk)
+  const T = typeof timing === 'function' && App.dunia ? timing() : null;
+  const eq = opt.regime && T ? T.equity : 1;
+  w = w.map((x) => x * eq);
   const plan = items.map((x, i) => {
     const s = x.s, tv = w[i] * V, cv = x.held ? x.held.val : 0;
     const dv = tv - cv;
     const sh = opt.frac ? Math.round((dv / s.price) * 100) / 100 : Math.trunc(dv / s.price);
-    return { s, held: x.held, w: w[i], cw: cv / (cur || 1), tv, cv, dv, sh };
+    return { s, held: x.held, st: x.st, w: w[i], cw: cv / (cur || 1), tv, cv, dv, sh };
   });
   rows.filter((r) => !sel.some((x) => x.held === r)).forEach((r) => plan.push({ s: r.s, held: r, w: 0, cw: r.val / (cur || 1), tv: 0, cv: r.val, dv: -r.val, sh: -r.qty, sellAll: true }));
   plan.forEach((p) => {
@@ -103,7 +108,7 @@ function computeRebalance(rows, opt) {
     const maxw = Math.max(...arr.map((p) => wf(p) / t));
     return { beta, exp, score, secs, maxw };
   };
-  return { V, cur, N, maxW, plan, before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
+  return { V, cur, N, maxW, plan, eq, T, cashT: V * (1 - eq), before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
 }
 
 function rebalanceCard(rows) {
@@ -123,7 +128,10 @@ function rebalanceCard(rows) {
       <label class="chk"><input type="checkbox" id="rbF" ${o.frac ? 'checked' : ''}> pecahan saham</label>
       <label>Saham lama minimal <select id="rbL">${[[0, 'tanpa batas'], [0.4, '40% batas'], [0.6, '60% batas'], [1, '= batas']].map(([v, n]) => `<option value="${v}" ${v === (o.floor ?? 0.6) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="chk"><input type="checkbox" id="rbK" ${o.keep ? 'checked' : ''}> jangan jual yang bersaran JUAL</label>
+      <label class="chk" title="Bobot sektor disesuaikan sikap Prakiraan Dunia: Tambah ×1,15 · Hati-hati ×0,85 · Kurangi ×0,65"><input type="checkbox" id="rbM" ${o.macro ? 'checked' : ''}> ikuti sikap makro sektor</label>
+      <label class="chk" title="Sisihkan kas sesuai skor Waktu Masuk"><input type="checkbox" id="rbR" ${o.regime ? 'checked' : ''}> sisihkan kas sesuai rezim</label>
     </div>
+    ${R.T ? `<p class="small" style="margin:8px 0 0">🌍 <a class="link" href="#/dunia">Waktu masuk: <b style="color:${timingColor(R.T.label)}">${R.T.label}</b></a> (skor ${Math.round(R.T.score)}) — porsi saham disarankan ±${Math.round(R.T.equity * 100)}% dari dana investasi${o.regime ? `; rencana ini menyisihkan <b>${fmt.usd(R.cashT, 0)}</b> sebagai kas` : '; centang "sisihkan kas sesuai rezim" untuk menerapkannya'}. Beli baru sebaiknya bertahap.</p>` : ''}
     <div class="kv k3" style="margin:10px 0">
       ${cmp('Bobot terbesar', R.before.maxw, R.after.maxw, (x) => Math.round(x * 100) + '%', (a, b) => b < a)}
       ${cmp('Jumlah sektor', R.before.secs, R.after.secs, (x) => x, (a, b) => b > a)}
@@ -134,7 +142,7 @@ function rebalanceCard(rows) {
     </div>
     <div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th>Aksi</th><th class="r">Sekarang</th><th class="r">Target</th><th class="r">Selisih</th><th class="r">Lembar</th></tr>
-      ${R.plan.map((p) => `<tr class="${p.act === 'Biarkan' ? 'faint' : ''}"><td><a href="#/s/${encodeURIComponent(p.s.sym)}"><b>${esc(p.s.sym)}</b></a> ${ratingBadge(p.s.rating)}<div class="faint small">${esc(p.s.sector)} · ${fmt.usd(p.s.price)} · potensi ${fmt.pct(p.s.val ? p.s.val.upside : null, 0)}</div></td>
+      ${R.plan.map((p) => `<tr class="${p.act === 'Biarkan' ? 'faint' : ''}"><td><a href="#/s/${encodeURIComponent(p.s.sym)}"><b>${esc(p.s.sym)}</b></a> ${ratingBadge(p.s.rating)}<div class="faint small">${esc(p.s.sector)} · ${fmt.usd(p.s.price)} · potensi ${fmt.pct(p.s.val ? p.s.val.upside : null, 0)}${p.st && p.st.k !== 'hold' ? ` · 🌍 ${STANCE[p.st.k].n}` : ''}</div></td>
         <td><b class="${p.act === 'Beli baru' || p.act === 'Tambah' ? 'up' : p.act === 'Biarkan' ? 'muted' : 'down'}">${p.act}</b></td>
         <td class="r mono">${Math.round(p.cw * 100)}%</td><td class="r mono"><b>${Math.round(p.w * 100)}%</b></td>
         <td class="r mono ${cls(p.dv)}">${p.dv >= 0 ? '+' : '−'}${fmt.usd(Math.abs(p.dv), 0)}</td><td class="r mono">${shTxt(p)}</td></tr>`).join('')}
@@ -147,12 +155,12 @@ function bindRebalance(rows, el) {
   if (!c) return;
   const save = () => {
     store.set('rebal', { maxW: parseFloat($('#rbW').value), n: parseInt($('#rbN').value, 10) || 0, cash: parseFloat($('#rbC').value) || 0,
-      frac: $('#rbF').checked, keep: $('#rbK').checked, floor: parseFloat($('#rbL').value) });
+      frac: $('#rbF').checked, keep: $('#rbK').checked, floor: parseFloat($('#rbL').value), macro: $('#rbM').checked, regime: $('#rbR').checked });
     const y = window.scrollY;
     renderPorto(el);
     window.scrollTo(0, y);
   };
-  ['#rbW', '#rbN', '#rbF', '#rbK', '#rbL'].forEach((id) => { $(id).onchange = save; });
+  ['#rbW', '#rbN', '#rbF', '#rbK', '#rbL', '#rbM', '#rbR'].forEach((id) => { $(id).onchange = save; });
   $('#rbC').onchange = save;
   $('#rbCopy').onclick = async () => {
     const R = computeRebalance(rows, rebOpts());

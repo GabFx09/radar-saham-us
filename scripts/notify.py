@@ -359,6 +359,26 @@ def weekly_chart(syms, by, mk):
 
 
 # ----------------------------------------------------------------------------- ringkasan pagi
+def world_line():
+    """Rezim & sikap saham AS dari Prakiraan Dunia (gabfx09.github.io/prakiraan-dunia)."""
+    for base in ("https://gabfx09.github.io/prakiraan-dunia/data/", "https://raw.githubusercontent.com/GabFx09/prakiraan-dunia/main/data/"):
+        try:
+            r = requests.get(base + "snapshot.json", timeout=20)
+            r.raise_for_status()
+            snap = r.json()
+            break
+        except Exception:  # noqa: BLE001
+            snap = None
+    if not snap:
+        return []
+    nm = {"add": "Tambah", "hold": "Tahan", "care": "Hati-hati", "cut": "Kurangi"}
+    us = next((a for a in snap.get("assets", []) if a["n"].startswith("Saham AS")), None)
+    out = f"🌍 {esc(snap.get('regimeTitle', ''))} · risiko dunia {snap.get('risk')}/100"
+    if us:
+        out += f" · saham AS: {nm.get(us['s'][0], us['s'][0])} (1 bln) → {nm.get(us['s'][2], us['s'][2])} (6 bln)"
+    return [out]
+
+
 def digest():
     d = load_json("stocks.json")
     if not d:
@@ -396,6 +416,7 @@ def digest():
         parts.append(f"USD/IDR {rows['IDR=X']['last']:,.0f}")
     if parts:
         L.append("🌐 " + " · ".join(parts))
+    L.extend(world_line())
 
     # pengingat H-1: laporan keuangan & ex-dividend saham milik/pantauan
     soon = []

@@ -187,6 +187,7 @@ function render() {
   else if (view === 'portofolio') renderPorto(el);
   else if (view === 'berita') renderBerita(el);
   else if (view === 'ipo') renderIpo(el);
+  else if (view === 'dunia') renderDunia(el);
   else renderHome(el);
   updateCmpBar();
   termAfterRender(view);
@@ -277,6 +278,7 @@ function renderHome(el) {
       <div class="hscroll">${picks.map(pickCard).join('')}</div>
     </section>
 
+    ${duniaHomeCard()}
     ${strategiHomeCard()}
     ${siklusHomeCard()}
     ${geoHomeCard()}
@@ -674,7 +676,7 @@ function renderDetail(el, sym) {
   el.innerHTML = `<div class="fade-in">
     <button class="back" onclick="history.length > 1 ? history.back() : (location.hash = '#/')"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Kembali</button>
     <div class="d-head">
-      <div style="min-width:0"><div class="d-sym">${esc(s.sym)} ${ratingBadge(s.rating)} ${changeTag(s)}</div>
+      <div style="min-width:0"><div class="d-sym">${esc(s.sym)} ${ratingBadge(s.rating)} ${changeTag(s)} ${stanceTag(s)}</div>
         <div class="d-name">${esc(s.name)}</div>
         <div class="d-tags"><span class="tag">${esc(s.sector)}</span><span class="tag">${esc(s.industry)}</span><span class="tag">${esc(s.cap)} cap</span></div></div>
       <div class="d-price"><div class="p">${fmt.usd(s.price)}</div><div class="${cls(s.chg1d)} mono" style="font-weight:700">${fmt.pct(s.chg1d, 2)}</div></div>
@@ -928,6 +930,11 @@ function renderMethod(el) {
 
     <h2>Aliran Dana (Money Flow)</h2>
     <p>Skor 0–100 dari: <b>Chaikin Money Flow</b> 20 hari (30%), tren <b>On-Balance Volume</b> &amp; divergensinya terhadap harga (15%), <b>Money Flow Index</b> 14 hari (15%), rasio volume hari naik vs turun (15%), lonjakan volume relatif disertai arah harga (10%), perubahan kepemilikan <b>10 institusi terbesar</b> dari laporan 13F (10%), dan perubahan <b>short interest</b> bulanan (5%). Perkiraan "uang masuk/keluar" = Σ posisi penutupan dalam rentang harian × volume × harga tipikal — ukuran tekanan beli/jual, bukan data transaksi per pembeli. Skor aliran dana menyumbang 30% komponen teknikal.</p>
+
+    <h2>Waktu Masuk &amp; Prakiraan Dunia</h2>
+    <p>Skor <b>Waktu Masuk</b> 0–100 menggabungkan sinyal pasar Radar (±60%: Fear &amp; Greed kontrarian, persentil CAPE, tren &amp; keluasan S&amp;P 500, siklus presiden, kurva yield, aliran dana 900+ saham) dengan analisis <a class="link" href="https://gabfx09.github.io/prakiraan-dunia/" target="_blank" rel="noopener">Prakiraan Dunia</a> (±40%: indeks risiko dunia, sikap matriks aset untuk saham AS 1–6 bulan, fase siklus Wyckoff S&amp;P 500, peluang skenario 1 tahun). Label: ≥62 Agresif · 50–62 Bertahap · 38–50 Hati-hati · &lt;38 Tahan kas, masing-masing dengan porsi saham yang disarankan 95/75/55/35%.</p>
+    <p><b>Sikap makro sektor</b> — Teknologi (dan Komunikasi raksasa) memakai baris "Saham teknologi &amp; AI", Energi baris "Saham energi &amp; minyak", penambang emas baris "Emas", lainnya "Saham AS". Hanya label &amp; pengali bobot rebalancing (×1,15 / ×1 / ×0,85 / ×0,65) — skor fundamental tidak berubah.</p>
+    <p><b>Kalibrasi rentang</b> — rentang harga Prakiraan dirancang memuat harga sebenarnya 55% dari waktu. Backtest-nya (5 tahun, tiap 5 hari bursa) memberi cakupan nyata per aset; lebar rentang dikali Φ⁻¹(0,775) ÷ Φ⁻¹((1+cakupan)/2) agar peluangnya kembali ±55%. Ini mengukur kalibrasi ketidakpastian, bukan ketepatan arah.</p>
 
     <h2>Kualitas Laba &amp; Dilusi</h2>
     <p><b>Akrual</b> = (laba bersih − arus kas operasi) ÷ total aset. Laba yang jauh di atas arus kas sering bersifat sementara (riset Sloan, 1996), sehingga akrual tinggi menurunkan pilar Kualitas. <b>Perubahan jumlah saham</b> setahun: penerbitan saham baru (dilusi) menurunkan pilar Kesehatan, buyback menaikkannya.</p>

@@ -1,4 +1,4 @@
-﻿# Radar Saham US
+# Radar Saham US
 
 Screener saham Amerika yang mengutamakan fundamental, dilengkapi analisis teknikal. Untuk setiap saham tersedia:
 skor 0–100, rekomendasi (Strong Buy / Buy / Hold / Hindari), **alasan kenapa layak dibeli**, risiko,
@@ -59,6 +59,10 @@ Data diperbarui otomatis Senin–Jumat sekitar pukul 05.30 WIB. Untuk update man
   volatilitas EWMA, return harapan = pandangan model + CAPM ala Black–Litterman); volatilitas, max drawdown,
   Sharpe/Sortino, beta, VaR; profil faktor; model portofolio mean-variance (konservatif/seimbang/agresif) dengan
   kovarians shrinkage + backtest; rekam jejak harian rekomendasi vs S&P 500 (`docs/data/track.json`).
+
+- Waktu masuk (`docs/dunia.js`): skor gabungan sinyal Radar + [Prakiraan Dunia](https://gabfx09.github.io/prakiraan-dunia/)
+  (rezim, risiko, matriks aset, siklus, skenario) → Agresif/Bertahap/Hati-hati/Tahan kas; sikap makro per sektor,
+  rentang harga dikalibrasi dari backtest Prakiraan, proyeksi portofolio dalam rupiah. Data Prakiraan hanya dibaca.
 
 Detail lengkap ada di halaman **Metodologi** di aplikasi.
 
