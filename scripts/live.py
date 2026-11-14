@@ -97,6 +97,21 @@ def fetch(symbols, period="5d", interval="15m"):
                     out[s] = c
             except Exception:  # noqa: BLE001
                 pass
+    missing = [s for s in symbols if s not in out]
+    if missing and len(missing) <= 60:  # putaran ulang tanpa thread (mis. "database is locked" di cache yfinance)
+        time.sleep(2)
+        try:
+            df = yf.download(missing, period=period, interval=interval, auto_adjust=False, group_by="ticker",
+                             threads=False, progress=False, prepost=False)
+            for s in missing:
+                try:
+                    c = (df[s] if isinstance(df.columns, pd.MultiIndex) else df)["Close"].dropna()
+                    if len(c):
+                        out[s] = c
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 
