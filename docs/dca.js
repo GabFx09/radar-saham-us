@@ -99,7 +99,7 @@ function dcaCard(rows, valUsd) {
     </div>
     ${P.orders.length ? `<div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th class="r">Beli</th><th class="r">Lembar</th><th class="r">Bobot</th></tr>
-      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)} · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}</span></div></td>
+      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div></td>
         <td class="r mono"><b>${rp((o.cost + o.fee) / (1 - B.fx) * P.K.v)}</b><div class="faint small">${fmt.usd(o.cost + o.fee, 2)}</div></td>
         <td class="r mono">${o.sh.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
         <td class="r mono">${Math.round(o.wAfter * 100)}%<div class="faint small">target ${Math.round(o.wT * 100)}%</div></td></tr>`).join('')}
@@ -153,7 +153,7 @@ function addPurchase(sym, qty, price, date) {
 }
 function lotsOf(r) {
   const L = r.h.lots;
-  if (Array.isArray(L) && L.length && L.every((x) => x.d && x.q > 0 && x.c > 0) && Math.abs(L.reduce((a, x) => a + x.q, 0) - r.qty) < 1e-6 * Math.max(1, r.qty)) return L;
+  if (Array.isArray(L) && L.length && L.every((x) => x.d && x.q > 0 && x.c > 0) && Math.abs(L.reduce((a, x) => a + x.q, 0) - r.qty) < 0.002 * Math.max(1, r.qty)) return L;
   return r.cost && r.h.date ? [{ d: r.h.date, q: r.qty, c: r.cost }] : null;
 }
 
@@ -262,4 +262,63 @@ function benchCard(rows) {
     </table></div>
     <p class="small faint" style="margin:8px 0 0">S&amp;P 500 = SPY termasuk dividen; return saham Anda dihitung dari harga beli (dividen yang diterima belum dihitung). Biaya &amp; kurs sama untuk keduanya sehingga diabaikan. Pembelian lewat tombol DCA / + Tambah dicatat per tanggal; posisi lama tanpa catatan per transaksi dianggap dibeli seluruhnya pada tanggal beli. ${skipTxt} Bila dalam 1–2 tahun portofolio terus tertinggal, pertimbangkan menaruh sebagian besar dana di ETF indeks.</p>
   </div>`;
+}
+
+/* ------------------------------------------------------------ target keuangan */
+function goalCfg() {
+  return Object.assign({ amt: 500000000, year: new Date().getFullYear() + 9, r: 0.08, infl: 0.035 }, (App.notify && App.notify.goal) || {});
+}
+function goalCalc(pv, G, pmt) {
+  const now = new Date();
+  const n = Math.max(1, (G.year - now.getFullYear()) * 12 + (11 - now.getMonth()));
+  const rm = Math.pow(1 + G.r, 1 / 12) - 1, g = Math.pow(1 + rm, n);
+  const need = Math.max(0, ((G.amt - pv * g) * rm) / (g - 1));
+  const fv = pv * g + (pmt * (g - 1)) / rm;
+  let m = 0, v = pv;
+  while (v < G.amt && m < 720) { v = v * (1 + rm) + pmt; m++; }
+  return { n, need, fv, months: v >= G.amt ? m : null, real: G.amt / Math.pow(1 + G.infl, n / 12) };
+}
+function goalCard(valUsd) {
+  const G = goalCfg(), D = dcaCfg(), K = idrNow().v, pv = valUsd * K;
+  const c = goalCalc(pv, G, D.amt || 0);
+  const p = G.amt ? Math.min(1, pv / G.amt) : 0;
+  const reach = c.months == null ? null : new Date(new Date().getFullYear(), new Date().getMonth() + c.months, 1);
+  const ok = c.fv >= G.amt;
+  const ceil50 = (x) => Math.ceil(x / 50000) * 50000;
+  return `<div class="card card-pad" style="margin-top:12px" id="goalCard">
+    <h3 class="card-title">🎯 Target Keuangan</h3>
+    <div class="reb-opts">
+      <label>Target Rp <input id="gAmt" type="number" min="0" step="10000000" value="${G.amt}" inputmode="numeric"></label>
+      <label>Tahun <select id="gYear">${Array.from({ length: 36 }, (_, i) => new Date().getFullYear() + 1 + i).map((y) => `<option value="${y}" ${y === G.year ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
+      <label>Asumsi return <select id="gR">${[0.06, 0.08, 0.1].map((v) => `<option value="${v}" ${v === G.r ? 'selected' : ''}>${v * 100}%/thn</option>`).join('')}</select></label>
+    </div>
+    <div style="margin-top:10px" class="small">Sekarang <b>${rp(pv)}</b> dari <b>${rp(G.amt)}</b> (${Math.round(p * 100)}%)</div>
+    <div class="goal-bar"><i style="width:${(p * 100).toFixed(1)}%"></i></div>
+    <div class="kv k3" style="margin:10px 0">
+      <div><div class="l">Perlu DCA / bulan</div><div class="v">${rp(c.need)}</div><div class="s">${c.n} bulan lagi · return ${Math.round(G.r * 100)}%/thn</div></div>
+      <div><div class="l">Dengan DCA sekarang</div><div class="v ${ok ? 'up' : 'down'}">${rp(c.fv)}</div><div class="s">${D.amt ? rp(D.amt) + '/bln' : 'DCA belum diisi'} · ${ok ? 'target tercapai ✓' : 'kurang ' + rp(G.amt - c.fv)}</div></div>
+      <div><div class="l">Target tercapai</div><div class="v">${reach ? reach.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }) : '–'}</div><div class="s">${reach ? 'dengan DCA sekarang' : 'naikkan DCA'}</div></div>
+    </div>
+    ${c.need > 0 && Math.abs(ceil50(c.need) - (D.amt || 0)) >= 50000 ? `<button class="btn" id="gUse">Pakai ${rp(ceil50(c.need))}/bulan sebagai nominal DCA</button>` : ''}
+    <div class="cmp-scroll" style="margin-top:10px"><table class="hold-table"><tr><th>Bila return rata-rata</th><th class="r">Perlu / bulan</th><th class="r">Hasil DCA sekarang</th></tr>
+      ${[0.06, 0.08, 0.1].map((r) => { const x = goalCalc(pv, Object.assign({}, G, { r }), D.amt || 0); return `<tr><td>${r * 100}%/thn</td><td class="r mono">${rp(x.need)}</td><td class="r mono ${x.fv >= G.amt ? 'up' : ''}">${rp(x.fv)}</td></tr>`; }).join('')}
+    </table></div>
+    <p class="small faint" style="margin:8px 0 0">${rp(G.amt)} di ${G.year} setara ±<b>${rp(c.real)}</b> uang hari ini (inflasi ${(G.infl * 100).toLocaleString('id-ID')}%/thn) — pertimbangkan menaikkan target atau DCA seiring naiknya penghasilan. Return dalam rupiah juga dipengaruhi kurs; hasil nyata tiap tahun bisa jauh berbeda dari rata-rata.</p>
+  </div>`;
+}
+function bindGoal(el) {
+  if (!$('#goalCard')) return;
+  const rerender = () => { const y = window.scrollY; renderPorto(el); window.scrollTo(0, y); };
+  const save = () => {
+    setNotifyKey('goal', Object.assign(goalCfg(), { amt: Math.max(0, parseFloat($('#gAmt').value) || 0), year: +$('#gYear').value, r: parseFloat($('#gR').value) }));
+    rerender();
+  };
+  ['#gAmt', '#gYear', '#gR'].forEach((id) => { $(id).onchange = save; });
+  const u = $('#gUse');
+  if (u) u.onclick = () => {
+    const G = goalCfg(), c = goalCalc(holdingRows().reduce((a, r) => a + r.val, 0) * idrNow().v, G, dcaCfg().amt || 0);
+    setNotifyKey('dca', Object.assign(dcaCfg(), { amt: Math.ceil(c.need / 50000) * 50000 }));
+    toast('Nominal DCA diperbarui');
+    rerender();
+  };
 }

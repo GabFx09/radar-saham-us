@@ -147,11 +147,19 @@ function computeRebalance(rows, opt) {
   const cur = rows.reduce((a, r) => a + r.val, 0);
   const V = cur + (Number(opt.cash) || 0);
   if (V <= 0) return null;
-  const N = opt.n || Math.max(3, (V < 1500 ? 4 : V < 6000 ? 6 : V < 25000 ? 8 : 10) + prof().nAdj);
+  // porsi kas sesuai rezim (skor Waktu Masuk) + inti ETF (satelit = saham pilihan)
+  const T = typeof timing === 'function' && App.dunia ? timing() : null;
+  const eq = opt.regime && T ? T.equity : 1; // T.equity sudah memperhitungkan profil
+  const C = typeof coreCfg === 'function' ? coreCfg() : { on: false };
+  const etfRows = rows.filter((r) => r.s.etf), stRows = rows.filter((r) => !r.s.etf);
+  const coreAmt = Math.min(V * eq, C.on ? V * eq * C.pct : etfRows.reduce((a, r) => a + r.val, 0));
+  const stockFrac = Math.max(0, eq - coreAmt / V);
+  const Vs = V * stockFrac || V;
+  const N = opt.n || Math.max(3, (Vs < 1500 ? 4 : Vs < 6000 ? 6 : Vs < 25000 ? 8 : 10) + prof().nAdj);
   const maxW = Math.max(opt.maxW, 1 / N + 0.02);
   const maxSec = Math.max(prof().sec, maxW + 0.05);
   // 1. kepemilikan: jual bila saran JUAL (kecuali opsi "jangan jual")
-  const keep = rows.filter((r) => opt.keep || r.adv.act !== 'JUAL');
+  const keep = stRows.filter((r) => opt.keep || r.adv.act !== 'JUAL');
   const sel = keep.map((r) => ({ s: r.s, held: r }));
   // 2. kandidat: Buy/Strong Buy, keyakinan bukan Rendah, utamakan sektor baru
   const have = new Set(sel.map((x) => x.s.sym));
@@ -173,7 +181,7 @@ function computeRebalance(rows, opt) {
   const floor = Math.min(maxW, (opt.floor ?? 0.6) * maxW);
   if (floor > 0) {
     for (let it = 0; it < 20; it++) {
-      const low = items.map((x, i) => x.held && x.held.adv.act !== 'JUAL' && w[i] < floor - 1e-9 && x.held.val / V >= floor * 0.5);
+      const low = items.map((x, i) => x.held && x.held.adv.act !== 'JUAL' && w[i] < floor - 1e-9 && x.held.val / Vs >= floor * 0.5);
       if (!low.some(Boolean)) break;
       const need = w.reduce((a, x, i) => a + (low[i] ? floor - x : 0), 0);
       const free = w.reduce((a, x, i) => a + (low[i] ? 0 : x), 0);
@@ -181,17 +189,22 @@ function computeRebalance(rows, opt) {
       w = w.map((x, i) => (low[i] ? floor : x * (1 - need / free)));
     }
   }
-  // porsi kas sesuai rezim (skor Waktu Masuk)
-  const T = typeof timing === 'function' && App.dunia ? timing() : null;
-  const eq = opt.regime && T ? T.equity : 1; // T.equity sudah memperhitungkan profil
-  w = w.map((x) => x * eq);
+  w = w.map((x) => x * stockFrac);
   const plan = items.map((x, i) => {
     const s = x.s, tv = w[i] * V, cv = x.held ? x.held.val : 0;
     const dv = tv - cv;
     const sh = opt.frac ? Math.round((dv / s.price) * 100) / 100 : Math.trunc(dv / s.price);
     return { s, held: x.held, st: x.st, w: w[i], cw: cv / (cur || 1), tv, cv, dv, sh };
   });
-  rows.filter((r) => !sel.some((x) => x.held === r)).forEach((r) => plan.push({ s: r.s, held: r, w: 0, cw: r.val / (cur || 1), tv: 0, cv: r.val, dv: -r.val, sh: -r.qty, sellAll: true }));
+  stRows.filter((r) => !sel.some((x) => x.held === r)).forEach((r) => plan.push({ s: r.s, held: r, w: 0, cw: r.val / (cur || 1), tv: 0, cv: r.val, dv: -r.val, sh: -r.qty, sellAll: true }));
+  // ETF: inti (bila aktif) atau dibiarkan apa adanya
+  const mkE = (s, held, tv) => { const cv = held ? held.val : 0, dv = tv - cv;
+    return { s, held, w: tv / V, cw: cv / (cur || 1), tv, cv, dv, sh: opt.frac ? Math.round((dv / s.price) * 100) / 100 : Math.trunc(dv / s.price), core: true }; };
+  const others = etfRows.filter((r) => !(C.on && r.s.sym === C.etf));
+  const othVal = others.reduce((a, r) => a + r.val, 0);
+  const scaleE = C.on ? Math.min(1, coreAmt / (othVal || 1)) : 1;
+  others.forEach((r) => plan.push(mkE(r.s, r, r.val * scaleE)));
+  if (C.on) plan.push(mkE(App.bySym[C.etf], etfRows.find((r) => r.s.sym === C.etf) || null, Math.max(0, coreAmt - othVal * scaleE)));
   plan.forEach((p) => {
     const rel = p.cv ? p.dv / p.cv : 1;
     p.act = p.sellAll ? 'Jual semua' : !p.held ? 'Beli baru' : Math.abs(p.dv) < Math.max(25, 0.02 * V) ? 'Biarkan' : rel < 0 ? 'Kurangi' : 'Tambah';
@@ -201,7 +214,8 @@ function computeRebalance(rows, opt) {
     const t = arr.reduce((a, p) => a + wf(p), 0) || 1;
     const beta = arr.reduce((a, p) => a + wf(p) * (((p.s.q || {}).beta_calc) ?? p.s.m.beta ?? 1), 0) / t;
     const exp = arr.reduce((a, p) => a + wf(p) * ((((p.s.q || {}).mc || {}).exp) ?? 0), 0) / t;
-    const score = arr.reduce((a, p) => a + wf(p) * p.s.score, 0) / t;
+    const stk = arr.filter((p) => !p.s.etf), ts = stk.reduce((a, p) => a + wf(p), 0) || 1;
+    const score = stk.reduce((a, p) => a + wf(p) * p.s.score, 0) / ts;
     const secs = new Set(arr.filter((p) => wf(p) > 0).map((p) => p.s.sector)).size;
     const maxw = Math.max(...arr.map((p) => wf(p) / t));
     return { beta, exp, score, secs, maxw };
@@ -215,7 +229,7 @@ function computeRebalance(rows, opt) {
   const sells = act.filter((p) => p.held && p.dv < 0);
   const realized = sells.reduce((a, p) => a + (p.held.cost ? Math.min(Math.abs(p.sh), p.held.qty) * (p.s.price - p.held.cost) : 0), 0);
   const cost = { B, traded, fees, realized, nTrades: act.length, sellAmt: sells.reduce((a, p) => a + Math.abs(p.dv), 0) };
-  return { V, cur, N, maxW, plan, why, eq, T, cost, cashT: V * (1 - eq), before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
+  return { V, cur, N, maxW, plan, why, eq, T, cost, core: C.on ? C : null, coreAmt, cashT: V * (1 - eq), before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
 }
 
 function rebalanceCard(rows) {
@@ -227,7 +241,7 @@ function rebalanceCard(rows) {
   const shTxt = (p) => (p.sh === 0 ? '–' : `${p.sh > 0 ? '+' : '−'}${Math.abs(p.sh).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
   return `<div class="card card-pad" style="margin-top:12px" id="rebCard">
     <div class="section-head" style="margin-bottom:6px;align-items:center;flex-wrap:wrap"><h3 class="card-title" style="margin:0">Saran Rebalancing</h3><button class="btn" id="rbCopy">Salin rencana</button></div>
-    <p class="small muted" style="margin:0 0 10px">Profil <b>${prof().ico} ${prof().n}</b> · target alokasi ${R.N} saham dari portofolio Anda + kandidat Buy/Strong Buy terbaik, dengan batas ${Math.round(R.maxW * 100)}% per saham dan keragaman sektor. Bobot mengikuti keyakinan model (skor, potensi naik, keyakinan nilai wajar, risiko simulasi, volatilitas).</p>
+    <p class="small muted" style="margin:0 0 10px">Profil <b>${prof().ico} ${prof().n}</b> · ${R.core ? `inti <b>${Math.round(R.core.pct * 100)}% ${esc(R.core.etf)}</b> + ` : ''}target alokasi ${R.N} saham dari portofolio Anda + kandidat Buy/Strong Buy terbaik, dengan batas ${Math.round(R.maxW * 100)}% per saham dan keragaman sektor. Bobot mengikuti keyakinan model (skor, potensi naik, keyakinan nilai wajar, risiko simulasi, volatilitas).</p>
     <div class="reb-opts">
       <label>Maks/saham <select id="rbW">${[0.15, 0.2, 0.25, 0.3, 0.4].map((v) => `<option value="${v}" ${v === o.maxW ? 'selected' : ''}>${v * 100}%</option>`).join('')}</select></label>
       <label>Jumlah saham <select id="rbN"><option value="0" ${!o.n ? 'selected' : ''}>otomatis</option>${[3, 4, 5, 6, 8, 10, 12].map((v) => `<option value="${v}" ${v === o.n ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -250,7 +264,7 @@ function rebalanceCard(rows) {
     ${R.cost.nTrades ? `<p class="small" style="margin:0 0 8px">💸 Perkiraan biaya ${esc(R.cost.B.n)}: <b>${fmt.usd(R.cost.fees, 2)}</b> (${R.cost.nTrades} transaksi senilai ${fmt.usd(R.cost.traded, 0)} × ${(R.cost.B.fee * 100).toLocaleString('id-ID')}%${o.cash ? ` + kurs ${(R.cost.B.fx * 100).toLocaleString('id-ID')}% untuk dana tambahan` : ''})${R.cost.realized > 1 ? ` · penjualan merealisasi untung ±<b>${fmt.usd(R.cost.realized, 0)}</b> (catat untuk SPT Tahunan)` : ''}.${R.cost.sellAmt > 0 ? ` Ingin tanpa menjual? <a class="link" href="#dcaCard" onclick="document.getElementById('dcaCard').scrollIntoView({behavior:'smooth'});return false">Rencana DCA</a> menyeimbangkan pelan-pelan lewat pembelian baru.` : ''}</p>` : ''}
     <div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th>Aksi</th><th class="r">Sekarang</th><th class="r">Target</th><th class="r">Selisih</th><th class="r">Lembar</th></tr>
-      ${R.plan.map((p) => `<tr class="${p.act === 'Biarkan' ? 'faint' : ''}"><td><a href="#/s/${encodeURIComponent(p.s.sym)}"><b>${esc(p.s.sym)}</b></a> ${ratingBadge(p.s.rating)}<div class="faint small">${esc(p.s.sector)} · ${fmt.usd(p.s.price)} · potensi ${fmt.pct(p.s.val ? p.s.val.upside : null, 0)}${p.st && p.st.k !== 'hold' ? ` · 🌍 ${STANCE[p.st.k].n}` : ''}</div></td>
+      ${R.plan.map((p) => `<tr class="${p.act === 'Biarkan' ? 'faint' : ''}"><td><a href="#/s/${encodeURIComponent(p.s.sym)}"><b>${esc(p.s.sym)}</b></a> ${ratingBadge(p.s.rating)}<div class="faint small">${esc(p.s.sector)} · ${fmt.usd(p.s.price)}${p.s.etf ? ' · inti' : ` · potensi ${fmt.pct(p.s.val ? p.s.val.upside : null, 0)}`}${p.st && p.st.k !== 'hold' ? ` · 🌍 ${STANCE[p.st.k].n}` : ''}</div></td>
         <td><b class="${p.act === 'Beli baru' || p.act === 'Tambah' ? 'up' : p.act === 'Biarkan' ? 'muted' : 'down'}">${p.act}</b></td>
         <td class="r mono">${Math.round(p.cw * 100)}%</td><td class="r mono"><b>${Math.round(p.w * 100)}%</b></td>
         <td class="r mono ${cls(p.dv)}">${p.dv >= 0 ? '+' : '−'}${fmt.usd(Math.abs(p.dv), 0)}</td><td class="r mono">${shTxt(p)}</td></tr>`).join('')}

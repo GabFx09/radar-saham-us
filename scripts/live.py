@@ -151,7 +151,8 @@ def main():
     if market_open or need_after or not stocks or old_fmt:
         try:
             with open(os.path.join(ROOT, "docs", "data", "stocks.json"), encoding="utf-8") as fh:
-                syms = [x["sym"] for x in json.load(fh)["stocks"]]
+                _d = json.load(fh)
+                syms = [x["sym"] for x in _d["stocks"]] + [x["sym"] for x in _d.get("etfs") or []]
         except Exception:  # noqa: BLE001
             syms = []
         sp = fetch(syms, period="5d", interval="15m", full=True)

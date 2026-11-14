@@ -1388,6 +1388,14 @@ def cap_bucket(m):
     return "Small"
 
 
+def load_json_safe(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 # ----------------------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser()
@@ -1399,6 +1407,11 @@ def main():
 
     t0 = time.time()
     os.makedirs(HIST_DIR, exist_ok=True)
+    # bobot hasil uji sinyal (IC) — aktif otomatis setelah ±3 bulan data
+    rw = quant.load_reweight(os.path.join(OUT_DIR, "quant.json"))
+    pillar_w = rw["pillar"] if rw else PILLAR_W
+    top_w = rw["top"] if rw else {"fund": 0.65, "tech": 0.20}
+    log(f"Bobot skor: {'DISESUAIKAN IC ' + str(rw.get('conf')) if rw else 'bawaan'} · pilar {pillar_w} · skor {top_w}")
     syms = get_universe(args)
     log(f"Menganalisis {len(syms)} saham...")
 
@@ -1490,7 +1503,7 @@ def main():
 
     for rec in records:
         rec["pillars"], rec["details"] = pillar_scores(rec, pct_tbl)
-        rec["fund"] = round(sum(rec["pillars"][k] * w for k, w in PILLAR_W.items()), 1)
+        rec["fund"] = round(sum(rec["pillars"][k] * w for k, w in pillar_w.items()), 1)
         rec["tech"] = tech_score(rec["t"], sf(moms.get(rec["sym"])), sf(rss.get(rec["sym"])))
         rec["analyst"] = analyst_score(rec["f"])
         rec["score"] = round(0.70 * rec["fund"] + 0.20 * rec["tech"] + 0.10 * rec["analyst"], 1)
@@ -1563,7 +1576,7 @@ def main():
             log(f"  ipo gagal: {e}")
     for rec in records:
         rec["geo_int"] = geo_int
-        rec["score"] = round(0.65 * rec["fund"] + 0.20 * rec.get("tech_comp", rec["tech"]) + 0.10 * rec["analyst"]
+        rec["score"] = round(top_w["fund"] * rec["fund"] + top_w["tech"] * rec.get("tech_comp", rec["tech"]) + 0.10 * rec["analyst"]
                              + 0.05 * rec["geo"]["score"], 1)
 
     for rec in records:
@@ -1722,8 +1735,15 @@ def main():
     quant_out = {"generated": now.isoformat(timespec="seconds"), "portfolios": portfolios, "track": None}
     if not args.tickers:
         try:
+            try:
+                _mk0 = load_json_safe(os.path.join(OUT_DIR, "makro.json")) or {}
+                mk_snap = {"fg": (_mk0.get("fg") or {}).get("now")}
+            except Exception:  # noqa: BLE001
+                mk_snap = None
             quant_out["track"] = quant.update_track(os.path.join(OUT_DIR, "track.json"), today, stocks,
-                                                    spy_t["price"] if spy_t else None, prices)
+                                                    spy_t["price"] if spy_t else None, prices,
+                                                    world=quant.world_snapshot(), mk=mk_snap)
+            quant_out["track"]["reweight"]["applied"] = bool(rw)
         except Exception as e:
             log(f"  rekam jejak gagal: {e}")
     if not args.tickers:
@@ -1794,6 +1814,13 @@ def main():
             if fn.endswith(".json") and fn[:-5] not in keep_d:
                 os.remove(os.path.join(detail_dir, fn))
 
+    # ETF indeks (inti portofolio) + riwayat 10 thn (termasuk SPY sebagai tolok ukur)
+    try:
+        import etf
+        etfs = etf.build(log=log)
+    except Exception as e:  # noqa: BLE001
+        log(f"  ETF gagal: {e}")
+        etfs = []
     payload = {
         "changes": changes,
         "generated": now.isoformat(timespec="seconds"),
@@ -1802,6 +1829,7 @@ def main():
         "market": market,
         "sectors": sector_out,
         "cov": {"ins": sum(1 for x in stocks if x.get("ins")), "own": sum(1 for x in stocks if x.get("own"))},
+        "etfs": etfs,
         "stocks": slim,
     }
     with open(os.path.join(OUT_DIR, "stocks.json"), "w", encoding="utf-8") as fh:
@@ -1819,20 +1847,8 @@ def main():
         with open(os.path.join(HIST_DIR, f"{rec['sym']}.json"), "w", encoding="utf-8") as fh:
             json.dump(hist, fh, separators=(",", ":"))
 
-    # tolok ukur S&P 500 (SPY) untuk perbandingan portofolio
-    if spy is not None:
-        c = spy["Close"].astype(float).dropna()
-        try:  # riwayat lebih panjang agar pembelian lama tetap bisa dibandingkan
-            long = yf.download("SPY", period="10y", interval="1d", auto_adjust=True, progress=False)["Close"].squeeze().astype(float).dropna()
-            if len(long) > len(c):
-                c = long
-        except Exception as e:  # noqa: BLE001
-            log(f"SPY 10 thn gagal: {e}")
-        with open(os.path.join(HIST_DIR, "SPY.json"), "w", encoding="utf-8") as fh:
-            json.dump({"d": [ix.strftime("%Y-%m-%d") for ix in c.index], "c": [round(float(x), 2) for x in c.values]}, fh, separators=(",", ":"))
-
     if not args.tickers:
-        keep = {rec["sym"] for rec in records} | {"SPY"}
+        keep = {rec["sym"] for rec in records} | {e["sym"] for e in etfs} | {"SPY", "USDIDR"}
         for fn in os.listdir(HIST_DIR):
             if fn.endswith(".json") and fn[:-5] not in keep:
                 os.remove(os.path.join(HIST_DIR, fn))

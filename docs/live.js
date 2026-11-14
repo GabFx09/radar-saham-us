@@ -21,7 +21,7 @@ function applyLive() {
   const L = App.live;
   if (!L) return;
   const fresh = (t, ref) => t && (!ref || Date.parse(t) > Date.parse(ref));
-  if (L.stocks && fresh(L.stocks_t, App.data.generated)) App.data.stocks.forEach(applyLiveOne);
+  if (L.stocks && fresh(L.stocks_t, App.data.generated)) { App.data.stocks.forEach(applyLiveOne); (App.etfs || []).forEach(applyLiveOne); }
   const A = L.assets || {};
   if (App.makro && App.makro.assets) {
     App.makro.assets.forEach((g) => g.rows.forEach((r) => {

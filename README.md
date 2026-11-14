@@ -62,6 +62,8 @@ Data diperbarui otomatis Senin–Jumat sekitar pukul 05.30 WIB. Untuk update man
 
 - Waktu masuk (`docs/dunia.js`): skor gabungan sinyal Radar + [Prakiraan Dunia](https://gabfx09.github.io/prakiraan-dunia/)
 - Rencana DCA bulanan, biaya broker (bawaan Pluang), dan perbandingan portofolio vs S&P 500 (`docs/dca.js`); pengingat DCA bulanan lewat Kabar
+- Inti ETF + satelit (`docs/etf.js`, data `scripts/etf.py`: VOO/IVV/SPY/VTI/QQQ/QQQM/SCHD), target keuangan, catatan penjualan & ringkasan SPT Tahunan (`docs/pajak.js`, kurs historis USD/IDR)
+- Penyetelan bobot skor otomatis dari uji sinyal IC 3 bulan (`quant.reweight`, aktif sendiri ±Feb 2027; matikan dengan env `REWEIGHT=0`)
   (rezim, risiko, matriks aset, siklus, skenario) → Agresif/Bertahap/Hati-hati/Tahan kas; sikap makro per sektor,
   rentang harga dikalibrasi dari backtest Prakiraan, proyeksi portofolio dalam rupiah. Data Prakiraan hanya dibaca.
 

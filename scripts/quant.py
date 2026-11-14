@@ -322,7 +322,65 @@ def build_portfolios(records, prices, spy_close, log=print):
 
 
 # ----------------------------------------------------------------------------- rekam jejak
-def update_track(path, date, stocks, spy_price, prices):
+# ----------------------------------------------------------------------------- penyetelan bobot otomatis
+BASE_PILLAR = {"quality": 0.30, "value": 0.28, "growth": 0.22, "health": 0.20}
+BASE_TOP = {"fund": 0.65, "tech": 0.20}
+RW_MIN_N = 20      # minimal 20 snapshot yang sudah berumur >= 60 hari (±3 bulan data harian)
+RW_IC_FULL = 0.05  # IC sebesar ini = kemiringan penuh
+
+
+def reweight(ic_rows):
+    """Usulan bobot pilar & skor dari IC 3 bulan (h60). Konservatif: maks ±50% dari bobot bawaan,
+    kekuatan penyesuaian naik bertahap sesuai jumlah data (penuh setelah 60 snapshot)."""
+    by = {r["key"]: r for r in ic_rows or []}
+    keys = list(BASE_PILLAR) + list(BASE_TOP)
+    have = min(((by.get(k) or {}).get("h60_n") or 0) for k in keys)
+    base = {"base_pillar": BASE_PILLAR, "base_top": BASE_TOP, "have": have, "need": RW_MIN_N}
+    if have < RW_MIN_N or any((by.get(k) or {}).get("h60") is None for k in keys):
+        return {"status": "menunggu", "pillar": BASE_PILLAR, "top": BASE_TOP, **base}
+    conf = min(1.0, have / 60)
+
+    def tilt(bw):
+        w = {k: bw[k] * (1 + 0.5 * conf * max(-1.0, min(1.0, by[k]["h60"] / RW_IC_FULL))) for k in bw}
+        tgt = sum(bw.values())
+        for _ in range(5):
+            tot = sum(w.values())
+            w = {k: min(bw[k] * 1.5, max(bw[k] * 0.5, v / tot * tgt)) for k, v in w.items()}
+        tot = sum(w.values())
+        return {k: round(v / tot * tgt, 3) for k, v in w.items()}
+
+    return {"status": "aktif", "conf": round(conf, 2), "pillar": tilt(BASE_PILLAR), "top": tilt(BASE_TOP),
+            "ic": {k: by[k]["h60"] for k in keys}, **base}
+
+
+def load_reweight(path):
+    """Bobot aktif dari quant.json sebelumnya (None = pakai bawaan). Matikan dengan env REWEIGHT=0."""
+    if os.environ.get("REWEIGHT", "1") == "0":
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            rw = (json.load(fh).get("track") or {}).get("reweight")
+    except Exception:  # noqa: BLE001
+        return None
+    return rw if rw and rw.get("status") == "aktif" else None
+
+
+def world_snapshot():
+    """Rezim Prakiraan Dunia hari ini — dicatat agar skor Waktu Masuk bisa diuji ke belakang nanti."""
+    import requests
+    for base in ("https://gabfx09.github.io/prakiraan-dunia/data/", "https://raw.githubusercontent.com/GabFx09/prakiraan-dunia/main/data/"):
+        try:
+            r = requests.get(base + "snapshot.json", timeout=20)
+            r.raise_for_status()
+            s = r.json()
+            us = next((a for a in s.get("assets", []) if a.get("n", "").startswith("Saham AS")), None)
+            return {"risk": s.get("risk"), "regime": s.get("regimeTitle"), "us": us.get("s") if us else None}
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
     """Tambahkan snapshot hari ini lalu hitung kinerja setiap kohort sampai harga terakhir."""
     try:
         with open(path, encoding="utf-8") as fh:
@@ -340,6 +398,10 @@ def update_track(path, date, stocks, spy_price, prices):
             "sb": {s["sym"]: s["price"] for s in stocks if s["rating"] == "STRONG BUY"},
             "b": {s["sym"]: s["price"] for s in stocks if s["rating"] == "BUY"},
             "h": {s["sym"]: s["price"] for s in stocks if s["rating"] == "HINDARI"}}
+    if world:
+        snap["w"] = world
+    if mk:
+        snap["m"] = mk
     track["snaps"] = [x for x in track["snaps"] if x["d"] != date] + [snap]
     track["snaps"].sort(key=lambda x: x["d"])
     track["snaps"] = track["snaps"][-400:]
@@ -391,8 +453,9 @@ def update_track(path, date, stocks, spy_price, prices):
             if p0 and p1:
                 best.append([sym, _r(p1 / p0 - 1)])
         best.sort(key=lambda x: -x[1])
+    ic = signal_ic(track["snaps"], last)
     return {
-        "ic": signal_ic(track["snaps"], last),
+        "ic": ic, "reweight": reweight(ic),
         "since": track["snaps"][0]["d"], "n_snaps": len(track["snaps"]),
         "cohorts": cohorts[::-1][:60],
         "alpha": {"sb": avg_alpha("sb"), "b": avg_alpha("b"), "h": avg_alpha("h")},

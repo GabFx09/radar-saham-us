@@ -341,3 +341,7 @@ pre.code { max-width: 100%; }
 .prof-seg button { background: none; border: 0; border-right: 1px solid var(--border); color: var(--text-2); font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer; }
 .prof-seg button:last-child { border-right: 0; }
 .prof-seg button.on { background: var(--accent); color: #000; font-weight: 700; }
+
+.badge.r-ETF { color: #fff; background: #6366f1; }
+.goal-bar { height: 10px; border-radius: 6px; background: var(--line, #333); overflow: hidden; margin: 6px 0 4px; }
+.goal-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #0ea271, #22c55e); }

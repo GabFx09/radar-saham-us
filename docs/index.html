@@ -122,11 +122,13 @@
   <script src="rebal.js"></script>
   <script src="aliran.js"></script>
   <script src="dunia.js"></script>
+  <script src="etf.js"></script>
   <script src="dca.js"></script>
+  <script src="pajak.js"></script>
   <script>
     /* pengaman: bila ada file aplikasi gagal dimuat / versi tercampur (koneksi lambat), tawarkan muat ulang bersih */
     (function () {
-      var need = ['renderPorto', 'loadDetail', 'computeRebalance', 'bigFlowHome', 'timing', 'dcaCard'];
+      var need = ['renderPorto', 'loadDetail', 'computeRebalance', 'bigFlowHome', 'timing', 'setupEtfs', 'dcaCard', 'sptCard'];
       var miss = need.filter(function (f) { return typeof window[f] !== 'function'; });
       if (!miss.length) return;
       var b = document.createElement('div');

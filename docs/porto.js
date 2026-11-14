@@ -13,6 +13,15 @@ const RANKV = { HINDARI: 0, HOLD: 1, BUY: 2, 'STRONG BUY': 3 };
 const pctS = (x) => (x == null ? '–' : (x >= 0 ? '+' : '') + Math.round(x * 100) + '%');
 const pctA = (x) => (x == null ? '–' : Math.round(Math.abs(x) * 100) + '%');
 function advise(h, s, closes, weight) {
+  if (s.etf) { // ETF indeks: inti jangka panjang, tanpa trailing stop / nilai wajar
+    const c0 = Number(h.cost) || 0, plE = c0 ? s.price / c0 - 1 : null;
+    let ddE = null;
+    if (closes && closes.length) { const pk = Math.max(...closes, s.price); ddE = pk ? s.price / pk - 1 : 0; }
+    const RE = [{ s: 1, t: 'ETF indeks — inti portofolio: tahan jangka panjang dan tambah rutin lewat DCA (tanpa trailing stop)' }];
+    if (ddE != null && ddE <= -0.15) RE.push({ s: 0, t: `Sedang turun ${pctA(ddE)} dari puncak — untuk ETF indeks biasanya kesempatan menambah lewat DCA, bukan alasan menjual` });
+    if (typeof coreCfg === 'function' && !coreCfg().on) RE.push({ s: 0, t: 'Aktifkan "Inti ETF + Satelit" agar porsinya ikut dihitung di Rebalancing & Rencana DCA' });
+    return { act: 'TAHAN', pts: 0, reasons: RE, trail: null, dd: ddE, pl: plE };
+  }
   const price = s.price || 0, val = s.val || {}, up = val.upside, q = s.q || {}, vol = q.vol || 0.35;
   const cost = Number(h.cost) || 0, buy = h.buy || {}, fair = val.fair ? '$' + val.fair.toFixed(2) : 'model';
   let pts = 0, hard = null, soft = null;
@@ -92,7 +101,7 @@ function holdingRows() {
 }
 function renderPorto(el) {
   const rows = holdingRows();
-  const missing = rows.filter((r) => !App.histCache[r.s.sym]).map((r) => r.s.sym).concat(rows.length && !App.histCache.SPY ? ['SPY'] : []);
+  const missing = rows.filter((r) => !App.histCache[r.s.sym]).map((r) => r.s.sym).concat(rows.length && !App.histCache.SPY ? ['SPY'] : []).concat(!App.histCache.USDIDR && (rows.length || (App.sales || []).length) ? ['USDIDR'] : []);
   if (missing.length && !renderPorto._loading) {
     renderPorto._loading = true;
     Promise.all(missing.map((x) => loadHist(x).catch(() => null))).then(() => { renderPorto._loading = false; if (parseHash().parts[0] === 'portofolio') renderPorto(el); });
@@ -111,8 +120,8 @@ function renderPorto(el) {
   const expRet = rows.reduce((a, r) => a + w(r) * ((r.s.q && r.s.q.mc && r.s.q.mc.exp) ?? 0), 0);
   const warns = [];
   const PF = typeof prof === 'function' ? prof() : { maxW: 0.25, n: 'Seimbang' };
-  rows.forEach((r) => { if (w(r) > PF.maxW) warns.push(`<b>${esc(r.s.sym)}</b> ${Math.round(w(r) * 100)}% dari portofolio — terlalu terkonsentrasi (saran ≤ ${Math.round(PF.maxW * 100)}% untuk profil ${PF.n}).`); });
-  secArr.forEach(([k, v]) => { if (v > 0.4) warns.push(`Sektor <b>${esc(k)}</b> ${Math.round(v * 100)}% — diversifikasi lemah.`); });
+  rows.forEach((r) => { if (!r.s.etf && w(r) > PF.maxW) warns.push(`<b>${esc(r.s.sym)}</b> ${Math.round(w(r) * 100)}% dari portofolio — terlalu terkonsentrasi (saran ≤ ${Math.round(PF.maxW * 100)}% untuk profil ${PF.n}).`); });
+  secArr.forEach(([k, v]) => { if (k !== 'ETF Indeks' && v > 0.4) warns.push(`Sektor <b>${esc(k)}</b> ${Math.round(v * 100)}% — diversifikasi lemah.`); });
   rows.forEach((r) => { if (r.s.rating === 'HINDARI') warns.push(`<b>${esc(r.s.sym)}</b> kini berperingkat HINDARI (skor ${Math.round(r.s.score)}) — tinjau ulang alasan memegangnya.`); });
   rows.forEach((r) => { if (r.s.val && r.s.val.upside < -0.15) warns.push(`<b>${esc(r.s.sym)}</b> ${fmt.pct(-r.s.val.upside, 0)} di atas nilai wajar model.`); });
   const { svg, cols } = rows.length ? donut(secArr) : { svg: '', cols: [] };
@@ -146,14 +155,16 @@ function renderPorto(el) {
         <input id="pDate" type="date" title="Tanggal beli" value="${new Date().toISOString().slice(0, 10)}">
         <button class="btn primary">+ Tambah</button>
       </form>
-      <datalist id="pSyms">${App.data.stocks.map((s) => `<option value="${esc(s.sym)}">${esc(s.name)}</option>`).join('')}</datalist>
+      <datalist id="pSyms">${App.data.stocks.concat(App.etfs || []).map((s) => `<option value="${esc(s.sym)}">${esc(s.name)}</option>`).join('')}</datalist>
     </div>
     ${typeof profileCard === 'function' ? profileCard() : ''}
+    ${typeof coreCard === 'function' ? coreCard() : ''}
+    ${typeof goalCard === 'function' ? goalCard(tot.val) : ''}
     ${typeof dcaCard === 'function' ? dcaCard(rows, tot.val) : ''}
     ${rows.length ? `<div class="card card-pad" style="margin-top:12px">
       <div class="section-head" style="margin-bottom:8px;align-items:center"><h3 class="card-title" style="margin:0">Penasihat Portofolio</h3><button class="btn" id="pCopy">Salin untuk analisis</button></div>
       <p class="small muted" style="margin:0 0 10px">Saran dari data aplikasi: rekomendasi &amp; nilai wajar model, perubahan fundamental sejak dibeli, trailing stop berbasis volatilitas, risiko simulasi, dan bobot portofolio. Diperbarui setiap update data harian.</p>
-      ${rows.slice().sort((a, b) => order[a.adv.act] - order[b.adv.act]).map((r) => `<div class="adv-row"><div class="adv-h">${actBadge(r.adv.act)} <a href="#/s/${encodeURIComponent(r.s.sym)}"><b>${esc(r.s.sym)}</b></a> <span class="faint small">${r.adv.pl == null ? '' : 'U/R ' + fmt.pct(r.adv.pl, 1) + ' · '}${r.adv.dd == null ? '' : 'dari puncak ' + fmt.pct(r.adv.dd, 0) + ' · '}trailing stop ${Math.round(r.adv.trail * 100)}%</span></div>
+      ${rows.slice().sort((a, b) => order[a.adv.act] - order[b.adv.act]).map((r) => `<div class="adv-row"><div class="adv-h">${actBadge(r.adv.act)} <a href="#/s/${encodeURIComponent(r.s.sym)}"><b>${esc(r.s.sym)}</b></a> <span class="faint small">${r.adv.pl == null ? '' : 'U/R ' + fmt.pct(r.adv.pl, 1) + ' · '}${r.adv.dd == null ? '' : 'dari puncak ' + fmt.pct(r.adv.dd, 0) + ' · '}${r.adv.trail ? 'trailing stop ' + Math.round(r.adv.trail * 100) + '%' : 'inti jangka panjang'}</span></div>
         <ul>${r.adv.reasons.map((x) => `<li class="${x.s > 0 ? 'up' : x.s < 0 ? 'down' : 'muted'}">${x.s > 0 ? '+' : x.s < 0 ? '−' : '·'} <span>${esc(x.t)}</span></li>`).join('')}</ul></div>`).join('')}
       ${App.dunia ? (() => { const T = timing(), D = App.dunia.snap; return `<p class="small" style="margin:8px 0 0">🌍 <b>${esc(D.regimeTitle)}</b> · risiko dunia ${D.risk}/100 · <a class="link" href="#/dunia">waktu masuk <b style="color:${timingColor(T.label)}">${T.label}</b></a> — ${T.label === 'Agresif' ? 'saran TAMBAH boleh dijalankan penuh' : T.label === 'Bertahap' ? 'jalankan saran TAMBAH bertahap (2–3 kali)' : 'jalankan saran TAMBAH kecil-kecil &amp; utamakan saran KURANGI/JUAL'}.</p>`; })() : ''}
       <p class="small faint" style="margin:8px 0 0">Bukan perintah jual-beli. Model tidak tahu tujuan, pajak, dan jangka waktu Anda — gunakan sebagai pemeriksaan kedua.</p>
@@ -161,6 +172,7 @@ function renderPorto(el) {
     ${typeof rebalanceCard === 'function' ? rebalanceCard(rows) : ''}
     ${typeof benchCard === 'function' ? benchCard(rows) : ''}
     ${rows.length ? idrCard(tot.val, expRet, idr) : ''}
+    ${typeof sptCard === 'function' ? sptCard(rows) : ''}
     <div class="grid-2" style="margin-top:12px">
       <div class="card card-pad"><h3 class="card-title">Alokasi Sektor</h3>
         <div class="port-wrap"><div class="donut-box">${svg}<div class="donut-c"><b>${rows.length}</b><span>saham</span></div></div>
@@ -193,11 +205,14 @@ function renderPorto(el) {
   $$('[data-edit]').forEach((b) => { b.onclick = () => editHolding(b.dataset.edit, el); });
   if (typeof bindRebalance === 'function') bindRebalance(rows, el);
   if (typeof bindProfile === 'function') bindProfile(el);
+  if (typeof bindCore === 'function') bindCore(el);
+  if (typeof bindGoal === 'function') bindGoal(el);
   if (typeof bindDca === 'function') bindDca(rows, el);
+  if (typeof bindSpt === 'function') bindSpt(rows, el);
   const cp = $('#pCopy');
   if (cp) cp.onclick = async () => {
     const txt = [`Portofolio saya (data Radar Saham per ${App.data.generated.slice(0, 10)}):`].concat(rows.map((r) =>
-      `- ${r.s.sym} ${r.qty} lbr @ $${r.cost || '?'}${r.h.date ? ' (beli ' + r.h.date + ')' : ''} → $${r.s.price} (${fmt.pct(r.plp, 1)}), bobot ${Math.round(w(r) * 100)}%, ${r.s.rating} skor ${Math.round(r.s.score)}, nilai wajar $${r.s.val ? r.s.val.fair : '?'}, saran ${r.adv.act}: ${r.adv.reasons.map((x) => x.t).join('; ')}`)).join('\n');
+      `- ${r.s.sym} ${r.qty} lbr @ $${r.cost || '?'}${r.h.date ? ' (beli ' + r.h.date + ')' : ''} → $${r.s.price} (${fmt.pct(r.plp, 1)}), bobot ${Math.round(w(r) * 100)}%, ${r.s.etf ? 'ETF indeks' : r.s.rating + ' skor ' + Math.round(r.s.score)}, nilai wajar $${r.s.val ? r.s.val.fair : '?'}, saran ${r.adv.act}: ${r.adv.reasons.map((x) => x.t).join('; ')}`)).join('\n');
     try { await navigator.clipboard.writeText(txt); toast('Disalin — tempel ke Claude untuk dianalisis'); } catch (e) { prompt('Salin teks ini:', txt); }
   };
 }
@@ -208,11 +223,22 @@ function editHolding(sym, el) {
     <div class="alert-form"><label>Jumlah lembar<input id="eQty" type="number" step="any" value="${h.qty}"></label>
     <label>Harga beli rata-rata ($)<input id="eCost" type="number" step="any" value="${h.cost ?? ''}"></label>
     <label>Tanggal beli<input id="eDate" type="date" value="${h.date || ''}"></label></div>
+    ${typeof recordSale === 'function' ? `<details style="margin:10px 0"><summary class="small"><b>Catat penjualan</b> — untuk untung/rugi &amp; SPT</summary>
+      <div class="alert-form"><label>Lembar dijual<input id="sQty" type="number" step="any" min="0" max="${h.qty}" placeholder="${h.qty}"></label>
+      <label>Harga jual ($)<input id="sPrice" type="number" step="any" min="0" value="${App.bySym[sym] ? App.bySym[sym].price : ''}"></label>
+      <label>Tanggal jual<input id="sDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></label></div>
+      <button class="btn" id="eSell" style="margin-top:6px">Catat penjualan</button></details>` : ''}
     <div class="sheet-actions"><button class="btn" id="eDel" style="color:var(--down)">Hapus</button><button class="btn" data-close>Batal</button><button class="btn primary" id="eSave">Simpan</button></div>`);
   $('#eSave').onclick = () => {
     const q = parseFloat($('#eQty').value) || 0, c = parseFloat($('#eCost').value), d = $('#eDate').value || h.date || null;
     if (q !== Number(h.qty) || (c > 0 ? c : null) !== (h.cost ?? null) || d !== h.date) delete h.lots; // diubah manual → catatan per transaksi tidak berlaku
     h.qty = q; h.cost = c > 0 ? c : null; h.date = d; if (!h.qty) App.holdings = App.holdings.filter((x) => x !== h); saveHoldings(); closeSheet(); renderPorto(el); };
+  const sb = $('#eSell');
+  if (sb) sb.onclick = () => {
+    const q = parseFloat($('#sQty').value), p = parseFloat($('#sPrice').value), d = $('#sDate').value || new Date().toISOString().slice(0, 10);
+    if (!(q > 0) || !(p > 0)) { toast('Isi lembar & harga jual'); return; }
+    if (recordSale(sym, q, p, d)) { closeSheet(); toast('Penjualan dicatat'); renderPorto(el); }
+  };
   $('#eDel').onclick = () => { App.holdings = App.holdings.filter((x) => x !== h); saveHoldings(); closeSheet(); renderPorto(el); };
 }
 function wlTabs(active) {
@@ -300,8 +326,24 @@ function icCard(tr) {
     ${any ? `<div class="cmp-scroll"><table class="hold-table"><tr><th>Faktor</th><th class="r">≥1 mgg</th><th class="r">≥1 bln</th><th class="r">≥3 bln</th></tr>
       ${rows.map((r) => `<tr><td>${esc(r.name)}</td>${c(r.h5, r.h5_n)}${c(r.h20, r.h20_n)}${c(r.h60, r.h60_n)}</tr>`).join('')}</table></div>`
       : '<p class="small faint">Data faktor mulai dicatat — hasil pertama muncul setelah ±1 minggu, dan baru bermakna setelah beberapa bulan.</p>'}
-    <p class="small faint" style="margin:8px 0 0">Setelah ±3 bulan data, bobot skor bisa disesuaikan berdasarkan faktor yang terbukti bekerja.</p>
+    ${rwHtml(tr.reweight, tr.since)}
   </div>`;
+}
+function rwHtml(rw, since) {
+  const NM = { quality: 'Kualitas', value: 'Valuasi', growth: 'Pertumbuhan', health: 'Kesehatan', fund: 'Fundamental', tech: 'Teknikal' };
+  if (!rw) return '<p class="small faint" style="margin:8px 0 0">Setelah ±3 bulan data, bobot skor disesuaikan otomatis berdasarkan faktor yang terbukti bekerja.</p>';
+  if (rw.status !== 'aktif') {
+    const p = Math.min(1, (rw.have || 0) / (rw.need || 20));
+    return `<div style="margin-top:10px"><div class="small"><b>Penyetelan bobot otomatis:</b> menunggu data — ${rw.have || 0}/${rw.need} snapshot berumur ≥ 3 bulan</div>
+      <div class="goal-bar"><i style="width:${Math.round(p * 100)}%"></i></div>
+      <p class="small faint" style="margin:0">Mulai aktif sendiri saat data cukup${since ? ` (perkiraan ${new Date(Date.parse(since) + (60 + 30) * 864e5).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })})` : ''}: butuh ${rw.need} hari pencatatan yang masing-masing sudah berumur 3 bulan. Bobot hanya digeser maksimal ±50% dari bawaan, bertahap sesuai jumlah data — jadi tidak berubah drastis karena kebetulan sesaat.</p></div>`;
+  }
+  const row = (k, b, w) => `<tr><td>${NM[k] || k}</td><td class="r mono">${Math.round(b * 100)}%</td><td class="r mono ${w > b + 0.005 ? 'up' : w < b - 0.005 ? 'down' : ''}"><b>${Math.round(w * 100)}%</b></td><td class="r mono">${rw.ic && rw.ic[k] != null ? (rw.ic[k] >= 0 ? '+' : '') + rw.ic[k].toFixed(3) : '–'}</td></tr>`;
+  return `<div style="margin-top:10px"><div class="small"><b>Penyetelan bobot otomatis: ${rw.applied ? '<span class="up">AKTIF</span>' : 'siap — dipakai mulai update berikutnya'}</b> · kekuatan ${Math.round((rw.conf || 0) * 100)}%</div>
+    <div class="cmp-scroll"><table class="hold-table"><tr><th>Komponen</th><th class="r">Bawaan</th><th class="r">Sekarang</th><th class="r">IC 3 bln</th></tr>
+    ${Object.keys(rw.base_pillar).map((k) => row(k, rw.base_pillar[k], rw.pillar[k])).join('')}
+    ${Object.keys(rw.base_top).map((k) => row(k, rw.base_top[k], rw.top[k])).join('')}</table></div>
+    <p class="small faint" style="margin:6px 0 0">Pilar membentuk skor Fundamental; Fundamental &amp; Teknikal membentuk skor gabungan (sisanya analis 10% &amp; geopolitik 5%, tetap). Digeser maks ±50% dari bawaan.</p></div>`;
 }
 function trackBanner(tr) {
   if (!tr || !tr.since) return '';

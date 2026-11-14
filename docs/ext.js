@@ -11,7 +11,7 @@
 const _detailCache = {};
 async function loadDetail(sym) {
   const s = App.bySym[sym];
-  if (!s || s._full) return s;
+  if (!s || s._full || s.etf) return s; // ETF tidak punya berkas detail
   if (!_detailCache[sym]) {
     _detailCache[sym] = fetch(`data/detail/${encodeURIComponent(sym)}.json`, { cache: 'no-cache' })
       .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
@@ -81,7 +81,7 @@ let localUpdated = store.get('localUpdated', 0);
 
 function cloudPayload() {
   return { v: 1, updated: new Date(localUpdated || Date.now()).toISOString(), watchlist: [...App.watch], compare: App.cmp,
-    alerts: App.alerts, settings: App.notify, push: App.pushSubs || [], holdings: App.holdings || [] };
+    alerts: App.alerts, settings: App.notify, push: App.pushSubs || [], holdings: App.holdings || [], sales: App.sales || [] };
 }
 function applyState(st) {
   App.watch = new Set((st.watchlist || []).filter(Boolean));
@@ -96,6 +96,7 @@ function applyState(st) {
   store.set('pushSubs', App.pushSubs);
   App.holdings = st.holdings || [];
   store.set('holdings', App.holdings);
+  if (Array.isArray(st.sales)) { App.sales = st.sales; store.set('sales', App.sales); }
 }
 async function ghApi(path, opt = {}) {
   const res = await fetch('https://api.github.com' + path, Object.assign({}, opt, {
@@ -136,6 +137,7 @@ async function cloudConnect(token) {
       settings: Object.assign({}, App.notify, data.settings || {}),
       push: [...new Map([...(data.push || []), ...(App.pushSubs || [])].map((x) => [x.endpoint, x])).values()],
       holdings: (data.holdings && data.holdings.length ? data.holdings : App.holdings || []),
+      sales: (data.sales && data.sales.length ? data.sales : App.sales || []),
     };
     applyState(merged);
   }

@@ -135,6 +135,7 @@ const CAPS = { Mega: 'Mega (>$200M)', Large: 'Large ($10–200M)', Mid: 'Mid ($2
 function setData(d) {
   App.data = d;
   App.bySym = Object.fromEntries(d.stocks.map((s) => [s.sym, s]));
+  if (typeof setupEtfs === 'function') setupEtfs(d); // ETF indeks (inti portofolio)
 }
 async function loadData() {
   // Data tersimpan (dari kunjungan sebelumnya) langsung ditampilkan; versi terbaru diunduh di latar.
@@ -529,6 +530,7 @@ function fmtMetric(v, type) {
 
 function renderDetail(el, sym) {
   const s = App.bySym[sym];
+  if (s && s.etf && typeof renderEtf === 'function') { renderEtf(el, s); return; }
   if (!s) {
     el.innerHTML = `<div class="empty"><div class="big-ico">🤷</div>Saham <b>${esc(sym)}</b> tidak ada di universe screener.<br><a class="link" href="#/screener">Kembali ke screener</a></div>`;
     return;
