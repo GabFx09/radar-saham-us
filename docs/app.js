@@ -244,8 +244,7 @@ function stockRow(s) {
 /* ------------------------------------------------------------ HOME */
 function renderHome(el) {
   const d = App.data, S = d.stocks, m = d.market;
-  const picks = S.filter((s) => s.rating === 'STRONG BUY' || s.rating === 'BUY')
-    .sort((a, b) => (b.rating === 'STRONG BUY') - (a.rating === 'STRONG BUY') || b.score - a.score).slice(0, 8);
+  const picks = homePicks();
   const nSB = S.filter((s) => s.rating === 'STRONG BUY').length;
   const nB = S.filter((s) => s.rating === 'BUY').length;
   const ups = S.filter((s) => s.val && (s.rating === 'STRONG BUY' || s.rating === 'BUY')).map((s) => s.val.upside).sort((a, b) => a - b);

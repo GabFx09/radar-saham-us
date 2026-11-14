@@ -16,6 +16,25 @@ function conviction(s) {
   const vol = (s.q && s.q.vol) || 0.35;
   return base / Math.sqrt(Math.max(0.15, vol) / 0.3); // sedikit lebih kecil untuk saham sangat volatil
 }
+/** Pilihan Teratas di Beranda: Strong Buy dulu, lalu skor tertinggi. */
+function homePicks(n = 8) {
+  return App.data.stocks.filter((s) => s.rating === 'STRONG BUY' || s.rating === 'BUY')
+    .sort((a, b) => (b.rating === 'STRONG BUY') - (a.rating === 'STRONG BUY') || b.score - a.score).slice(0, n);
+}
+/** Alasan saham Pilihan Teratas tidak masuk rencana rebalancing. */
+function whyNotPicked(sel, N, opt) {
+  const inSel = new Set(sel.map((x) => x.s.sym));
+  return homePicks().filter((s) => !inSel.has(s.sym)).map((s) => {
+    const mc = (s.q && s.q.mc) || {}, conf = (s.val || {}).confidence;
+    const risk = (mc.p_loss20 || 0) >= 0.3 ? ` · peluang turun 20% dalam simulasi ${Math.round(mc.p_loss20 * 100)}%` : '';
+    if (App.holdings.some((h) => h.sym === s.sym)) return { s, t: 'sudah Anda miliki, tetapi penasihat menyarankan JUAL' };
+    if (!s.val) return { s, t: 'belum ada nilai wajar' };
+    if (conf === 'Rendah') return { s, t: 'keyakinan nilai wajar rendah — perkiraan harga wajarnya kurang bisa diandalkan' + risk };
+    const same = sel.find((x) => x.s.sector === s.sector);
+    if (same) return { s, t: `sektor ${s.sector} sudah terwakili oleh ${same.s.sym} — diutamakan sektor yang belum Anda punya` };
+    return { s, t: `kalah peringkat risiko/imbal hasil dari kandidat terpilih (jumlah saham dibatasi ${N}${opt.n ? '' : ' otomatis sesuai nilai portofolio'})` + risk };
+  });
+}
 function candidateQuality(s) {
   const up = s.val ? s.val.upside : 0, mc = (s.q && s.q.mc) || {};
   return s.score + 15 * clamp(up || 0, 0, 0.6) - 20 * (mc.p_loss20 || 0.2) + ((s.val || {}).confidence === 'Tinggi' ? 4 : 0);
@@ -108,7 +127,8 @@ function computeRebalance(rows, opt) {
     const maxw = Math.max(...arr.map((p) => wf(p) / t));
     return { beta, exp, score, secs, maxw };
   };
-  return { V, cur, N, maxW, plan, eq, T, cashT: V * (1 - eq), before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
+  const why = whyNotPicked(sel, N, opt);
+  return { V, cur, N, maxW, plan, why, eq, T, cashT: V * (1 - eq), before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
 }
 
 function rebalanceCard(rows) {
@@ -147,6 +167,9 @@ function rebalanceCard(rows) {
         <td class="r mono">${Math.round(p.cw * 100)}%</td><td class="r mono"><b>${Math.round(p.w * 100)}%</b></td>
         <td class="r mono ${cls(p.dv)}">${p.dv >= 0 ? '+' : '−'}${fmt.usd(Math.abs(p.dv), 0)}</td><td class="r mono">${shTxt(p)}</td></tr>`).join('')}
     </table></div>
+    ${R.why.length ? `<details class="reb-why" open style="margin-top:10px"><summary class="small"><b>Kenapa berbeda dengan Pilihan Teratas di Beranda?</b> (${R.why.length} saham tidak dipilih)</summary>
+      <p class="small muted" style="margin:6px 0">Beranda mengurutkan skor tertinggi saja. Rebalancing memilih yang paling cocok <i>untuk portofolio Anda</i>: membuang keyakinan nilai wajar rendah, memperhitungkan risiko turun, dan mendahulukan sektor baru.</p>
+      <ul class="small" style="margin:0;padding-left:18px">${R.why.map((x) => `<li><a href="#/s/${encodeURIComponent(x.s.sym)}"><b>${esc(x.s.sym)}</b></a> ${ratingBadge(x.s.rating)} <span class="faint">skor ${Math.round(x.s.score)}</span> — ${esc(x.t)}</li>`).join('')}</ul></details>` : ''}
     <p class="small faint" style="margin:8px 0 0">Jalankan bertahap (mis. 2–3 kali dalam 1–2 minggu) dan perhitungkan biaya broker &amp; pajak. Setelah transaksi, perbarui jumlah lembar di tabel Kepemilikan agar saran berikutnya akurat. Bukan nasihat keuangan pribadi.</p>
   </div>`;
 }
