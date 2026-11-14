@@ -254,7 +254,8 @@ function renderPesan(el) {
   };
   $('#chatForm').onsubmit = (e) => { e.preventDefault(); const v = $('#chatIn').value; $('#chatIn').value = ''; ask(v); };
   $$('.chat-chips [data-q]').forEach((b) => { b.onclick = () => ask(b.dataset.q); });
-  $('#pushBtn').onclick = enablePush;
+  const pb = $('#pushBtn');
+  if (pb) pb.onclick = enablePush;
 
 }
 

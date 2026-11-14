@@ -151,7 +151,9 @@ async function loadData() {
     if (d.generated === App.data.generated) return;
     setData(d);
     if (typeof applyLive === 'function') applyLive();
-    render();
+    // jangan ganggu halaman yang sedang dibaca/diisi; data baru dipakai saat pindah halaman
+    const v = parseHash().parts[0] || 'home';
+    if (v !== 's' && v !== 'portofolio' && v !== 'pengaturan') render();
     toast('Data terbaru dimuat');
   }).catch(() => {});
 }

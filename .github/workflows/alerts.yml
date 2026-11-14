@@ -1,10 +1,8 @@
 name: Alert harga & berita penting
 
+# Alert rutin kini dijalankan di dalam workflow "Harga live" (tiap ±30 menit, lebih andal daripada cron GitHub).
+# Workflow ini untuk menjalankan manual: alerts / digest / test.
 on:
-  schedule:
-    # tiap 30 menit sepanjang hari: berita penting dicek kapan saja,
-    # alert harga hanya dijalankan saat bursa AS buka (diatur di notify.py)
-    - cron: "15,45 * * * *"
   workflow_dispatch:
     inputs:
       mode:

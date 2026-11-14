@@ -165,7 +165,7 @@ function bindRebalance(rows, el) {
   $('#rbCopy').onclick = async () => {
     const R = computeRebalance(rows, rebOpts());
     const txt = [`Rencana rebalancing (${App.data.generated.slice(0, 10)}, nilai ${fmt.usd(R.V, 0)}):`].concat(R.plan.filter((p) => p.act !== 'Biarkan').map((p) =>
-      `- ${p.act} ${p.s.sym}: ${p.sh > 0 ? 'beli' : 'jual'} ${Math.abs(p.sh)} lbr (~${fmt.usd(Math.abs(p.dv), 0)}) → target ${Math.round(p.w * 100)}%`)).join('\n');
+      `- ${p.act} ${p.s.sym}: ${p.sh > 0 ? 'beli' : 'jual'} ${Math.abs(p.sh)} lbr (~${fmt.usd(Math.abs(p.dv), 0)}) → target ${Math.round(p.w * 100)}%`)).concat(R.eq < 1 ? [`- Sisihkan kas ~${fmt.usd(R.cashT, 0)} (${Math.round((1 - R.eq) * 100)}%) sesuai rezim "${R.T.label}"`] : []).join('\n');
     try { await navigator.clipboard.writeText(txt); toast('Rencana disalin'); } catch (e) { prompt('Salin:', txt); }
   };
 }

@@ -329,6 +329,7 @@ function dividendHtml(days) {
 function idrCard(valUsd, expRet, idrNow) {
   if (typeof idrScenarios !== 'function' || !valUsd) return '';
   const X = idrScenarios();
+  if (!X) return '';
   const now = idrNow || X.cur;
   const vol = 0.2;
   const sc = [

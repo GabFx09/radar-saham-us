@@ -126,7 +126,8 @@ function calibratedBands() {
 /* ------------------------------------------------------------ skenario rupiah */
 function idrScenarios() {
   const D = App.dunia && App.dunia.snap;
-  const cur = (() => { const r = App.makro && App.makro.assets && App.makro.assets.flatMap((g) => g.rows).find((x) => x.sym === 'IDR=X'); return r ? r.last : 18000; })();
+  const cur = (() => { const r = App.makro && App.makro.assets && App.makro.assets.flatMap((g) => g.rows).find((x) => x.sym === 'IDR=X'); return r ? r.last : null; })();
+  if (!cur) return null;
   const parse = (txt) => { const m = /Rupiah\s+([\d.]+)\s*[–-]\s*([\d.]+)/i.exec(txt || ''); return m ? (Number(m[1].replace(/\./g, '')) + Number(m[2].replace(/\./g, ''))) / 2 : null; };
   let base = null;
   if (D) { const yr = D.horizons.find((h) => h.id === '1t'); if (yr) for (const sc of yr.sc) { const v = parse([sc.d, ...(sc.l || [])].join(' ')); if (v && sc.k === 'base') base = v; } }
@@ -201,7 +202,7 @@ async function renderDunia(el) {
   const wait = setInterval(() => {
     if (!App.data) return;
     clearInterval(wait);
-    loadAllForTiming().then(() => { const v = parseHash().parts[0] || 'home'; if (v === 'home' || v === 'portofolio' || v === 'dunia') render();
+    loadAllForTiming().then(() => { const v = parseHash().parts[0] || 'home'; if (v === 'home' || v === 'portofolio') render();
     else if (v === 's') { const t = document.querySelector('.d-sym'), s = App.data.stocks.find((x) => x.sym === decodeURIComponent(parseHash().parts[1] || '').toUpperCase()); if (t && s && !t.querySelector('a.tag')) t.insertAdjacentHTML('beforeend', ' ' + stanceTag(s)); } });
   }, 200);
 })();
