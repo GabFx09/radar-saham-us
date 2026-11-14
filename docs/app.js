@@ -182,6 +182,7 @@ function render() {
   else if (view === 'pesan') renderPesan(el);
   else if (view === 'portofolio') renderPorto(el);
   else if (view === 'berita') renderBerita(el);
+  else if (view === 'ipo') renderIpo(el);
   else renderHome(el);
   updateCmpBar();
   termAfterRender(view);

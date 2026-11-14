@@ -1452,6 +1452,14 @@ def main():
             log(f"  berita penting: {len(items)} dari {len(cand)} saham + pasar")
         except Exception as e:  # noqa: BLE001
             log(f"  berita penting gagal: {e}")
+        try:
+            import ipo
+            ip = ipo.build(log=log)
+            if ip["upcoming"] or ip["recent"]:
+                with open(os.path.join(OUT_DIR, "ipo.json"), "w", encoding="utf-8") as fh:
+                    json.dump(ip, fh, ensure_ascii=False, separators=(",", ":"))
+        except Exception as e:  # noqa: BLE001
+            log(f"  ipo gagal: {e}")
     for rec in records:
         rec["geo_int"] = geo_int
         rec["score"] = round(0.65 * rec["fund"] + 0.20 * rec["tech"] + 0.10 * rec["analyst"]

@@ -297,14 +297,22 @@ def portfolio_lines(cfg, by, rows):
         cost += q * c
         day += v - v / (1 + (s.get("chg1d") or 0))
         pl = (s["price"] / c - 1) if c else None
-        det.append((v, f"{esc(h['sym'])} {q:g} lbr · {usd(v)} · {pct(pl, 1)} · {esc(s['rating'])}"))
+        det.append((v, h, f"{esc(h['sym'])} {q:g} lbr · {usd(v)} · {pct(pl, 1)} · {esc(s['rating'])}"))
     det.sort(key=lambda x: -x[0])
+    import penasihat
+    adv = {}
+    for v, h, _ in det:
+        hist = load_json(os.path.join("history", f"{h['sym']}.json"))
+        adv[h["sym"]] = penasihat.advise(h, by[h["sym"]], penasihat.closes_since(hist, h.get("date")), v / val if val else 0)
+    CTX["advice"] = adv
     pl_tot = val - cost if cost else None
     L = [f"\n<b>💼 PORTOFOLIO</b> · nilai <b>{usd(val)}</b> · hari ini {'+' if day >= 0 else ''}{usd(day)}"
          + (f" · total {('+' if pl_tot >= 0 else '')}{usd(pl_tot)} ({pct(pl_tot / cost, 1)})" if pl_tot is not None else "")]
     if "IDR=X" in rows:
         L.append(f"≈ Rp {val * rows['IDR=X']['last']:,.0f}".replace(",", "."))
-    L.extend(x for _, x in det[:12])
+    for _, h, x in det[:12]:
+        a = adv[h["sym"]]
+        L.append(f"[{a['act']}] {x}" + (f"\n   ↳ {esc(a['reasons'][0]['t'])}" if a["act"] in ("JUAL", "KURANGI") and a["reasons"] else ""))
     return L
 
 
@@ -407,6 +415,18 @@ def digest():
         L.extend(soon)
 
     L.extend(portfolio_lines(cfg, by, rows))
+    ip = load_json("ipo.json") or {}
+    big = [x for x in ip.get("upcoming") or [] if x.get("type") == "Perusahaan" and x.get("date")
+           and x["date"] <= (dt.date.today() + dt.timedelta(days=8)).isoformat() and (x.get("amount") or 0) >= 50e6]
+    if big:
+        L.append("\n<b>🆕 IPO MINGGU INI</b>")
+        for x in big[:6]:
+            rng = f"${x['lo']:.0f}–{x['hi']:.0f}" if x.get("lo") and x.get("hi") and x["lo"] != x["hi"] else (f"${x['hi']:.2f}" if x.get("hi") else "harga belum ada")
+            L.append(f"{esc(x.get('sym') or '?')} · {esc(x['name'])} · {x['date'][8:10]}/{x['date'][5:7]} · {rng} · "
+                     f"{('$' + format(x['amount'] / 1e6, ',.0f') + ' jt') if x.get('amount') else ''}")
+    lk = [x for x in ip.get("lockups") or [] if x["sym"] in mine and x["date"] <= (dt.date.today() + dt.timedelta(days=10)).isoformat()]
+    for x in lk:
+        L.append(f"🔓 <b>{esc(x['sym'])}</b> lock-up IPO berakhir {x['date'][8:10]}/{x['date'][5:7]} — orang dalam boleh menjual, harga sering tertekan")
 
     # watchlist
     if wl:
@@ -472,6 +492,12 @@ def digest():
         log(f"Berita gagal: {e}")
     L.append(f"\n<a href=\"{SITE}\">Buka Radar Saham</a> · bukan nasihat investasi")
     deliver("digest", title, L, SITE)
+    prev = state.get("adv") or {}
+    for sym, a in (CTX.get("advice") or {}).items():
+        if a["act"] in ("JUAL", "KURANGI") and prev.get(sym) != a["act"]:
+            deliver("advice", f"💼 {sym}: saran {a['act']}", [f"{'−' if r['s'] < 0 else '+' if r['s'] > 0 else '·'} {esc(r['t'])}" for r in a["reasons"]],
+                    f"{SITE}#/portofolio", sym, prio="tinggi" if a["act"] == "JUAL" else "normal")
+    state["adv"] = {k: v["act"] for k, v in (CTX.get("advice") or {}).items()}
     if tgl.weekday() == 0 and mine:  # Senin: laporan mingguan bergrafik
         try:
             png = weekly_chart(mine, by, mk)
