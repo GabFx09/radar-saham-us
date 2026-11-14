@@ -431,6 +431,32 @@ def revision_score(e):
 
 
 # ----------------------------------------------------------------------------- utama
+def fx_from_hourly(px, log=print):
+    """Bar harian valas Yahoo kadang berganti sumber kuotasi (mis. USD/IDR melompat 17.500 <-> 18.100).
+    Untuk 60 hari terakhir, bangun penutupan harian dari bar per jam yang konsisten."""
+    fx = [s for g, items in ASSETS if g == "Valas" for s, _ in items]
+    try:
+        df = yf.download(fx, period="60d", interval="1h", auto_adjust=False, group_by="ticker", progress=False, threads=True)
+    except Exception as e:  # noqa: BLE001
+        log(f"  makro: valas per jam gagal ({e})")
+        return
+    for s in fx:
+        try:
+            h = (df[s] if isinstance(df.columns, pd.MultiIndex) else df)["Close"].dropna()
+        except Exception:  # noqa: BLE001
+            continue
+        if len(h) < 50 or s not in px:
+            continue
+        h.index = h.index.tz_convert("UTC").tz_localize(None)
+        daily = h.groupby(h.index.date).last()
+        daily.index = pd.to_datetime(daily.index)
+        base = px[s].copy()
+        base.index = pd.to_datetime(base.index).tz_localize(None) if getattr(base.index, "tz", None) is not None else pd.to_datetime(base.index)
+        old = base[base.index < daily.index[0]]
+        px[s] = pd.concat([old, daily]).astype(float)
+        log(f"  makro: {s} 60 hari dari data per jam (terakhir {daily.iloc[-1]:.4f})")
+
+
 def build(prices, universe_close, log=print):
     syms = all_symbols()
     px = {s: prices[s]["Close"].astype(float).dropna() for s in syms if s in prices}
@@ -438,6 +464,7 @@ def build(prices, universe_close, log=print):
     if missing:
         px.update(download(missing, "2y", log))
     log(f"  makro: {len(px)}/{len(syms)} aset")
+    fx_from_hourly(px, log)
     out = {"assets": cross_asset(px)}
     try:
         out["curve"] = yield_curve(px, log)

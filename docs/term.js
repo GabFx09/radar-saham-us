@@ -135,7 +135,8 @@ function tickClock() {
   else if (wk && mins >= 240 && mins < 570) { st = 'PRA-PASAR'; cl = 'pre'; }
   else if (wk && mins >= 960 && mins < 1200) { st = 'PASCA-PASAR'; cl = 'pre'; }
   const wib = d.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
-  el.innerHTML = `NY <b>${ny.txt}</b> · WIB <b>${wib.replace('.', ':')}</b><br><span class="st ${cl}">● ${st}</span>`;
+  const live = typeof liveLabel === 'function' && App.live ? ` <span class="faint" style="font-size:10.5px">${liveLabel()}</span>` : '';
+  el.innerHTML = `NY <b>${ny.txt}</b> · WIB <b>${wib.replace('.', ':')}</b><br><span class="st ${cl}">● ${st}</span>${live}`;
 }
 
 /* ------------------------------------------------------------ ticker tape */

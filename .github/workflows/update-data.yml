@@ -35,7 +35,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/data
           git diff --cached --quiet || git commit -m "Update data screener $(date -u +%Y-%m-%d)"
-          git push
+          for i in 1 2 3 4; do git pull -q --rebase -X ours && git push -q && break; sleep 8; done
       - name: Kirim ringkasan pagi (Kabar / Telegram)
         if: ${{ env.GIST_TOKEN != '' || env.KABAR_TOKEN != '' || (env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') }}
         continue-on-error: true
