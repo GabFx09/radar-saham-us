@@ -58,14 +58,18 @@ function liveLabel() {
 (function liveBoot() {
   // (label waktu harga live ditampilkan oleh tickClock di term.js)
   // muat detail saham -> terapkan ulang harga live
-  const _load = loadDetail;
-  loadDetail = async function (sym) { const s = await _load(sym); applyLiveOne(s); return s; };
+  if (typeof loadDetail === 'function') {
+    const _load = loadDetail;
+    loadDetail = async function (sym) { const s = await _load(sym); applyLiveOne(s); return s; };
+  }
   // makro dimuat terpisah -> terapkan harga live setelahnya
-  const _lm = loadMakro;
-  loadMakro = async function () { const m = await _lm(); applyLive(); return m; };
+  if (typeof loadMakro === 'function') {
+    const _lm = loadMakro;
+    loadMakro = async function () { const m = await _lm(); applyLive(); return m; };
+  }
 
   const refresh = (force) => loadLive().then((changed) => {
-    document.querySelectorAll('.today-flow-slot').forEach((el) => { const s = App.bySym[el.dataset.sym]; if (s) el.innerHTML = todayFlowLine(s); });
+    document.querySelectorAll('.today-flow-slot').forEach((el) => { const s = App.bySym[el.dataset.sym]; if (s && typeof todayFlowLine === 'function') el.innerHTML = todayFlowLine(s); });
     if (!changed && !force) return;
     tickClock();
     buildTape();

@@ -1822,6 +1822,12 @@ def main():
     # tolok ukur S&P 500 (SPY) untuk perbandingan portofolio
     if spy is not None:
         c = spy["Close"].astype(float).dropna()
+        try:  # riwayat lebih panjang agar pembelian lama tetap bisa dibandingkan
+            long = yf.download("SPY", period="10y", interval="1d", auto_adjust=True, progress=False)["Close"].squeeze().astype(float).dropna()
+            if len(long) > len(c):
+                c = long
+        except Exception as e:  # noqa: BLE001
+            log(f"SPY 10 thn gagal: {e}")
         with open(os.path.join(HIST_DIR, "SPY.json"), "w", encoding="utf-8") as fh:
             json.dump({"d": [ix.strftime("%Y-%m-%d") for ix in c.index], "c": [round(float(x), 2) for x in c.values]}, fh, separators=(",", ":"))
 

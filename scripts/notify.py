@@ -388,11 +388,16 @@ def digest():
     gid, cfg, state = user_config()
     process_actions(gid, cfg, state)
     st = cfg["settings"]
+    mk = load_json("makro.json") or {}
     if st.get("daily") is False:
         log("Ringkasan harian dimatikan di pengaturan.")
+        try:  # pengingat DCA tetap jalan walau ringkasan dimatikan
+            dca_reminder(st, state, next((r["last"] for g in mk.get("assets", []) for r in g["rows"] if r["sym"] == "IDR=X"), None))
+            flush()
+        except Exception as e:  # noqa: BLE001
+            log(f"Pengingat DCA gagal: {e}")
         return
     by = {s["sym"]: s for s in d["stocks"]}
-    mk = load_json("makro.json") or {}
     wl = [s for s in cfg["watchlist"] if s in by]
     held = [h["sym"] for h in cfg.get("holdings") or [] if h.get("sym") in by]
     mine = list(dict.fromkeys(held + wl))

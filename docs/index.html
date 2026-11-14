@@ -123,5 +123,21 @@
   <script src="aliran.js"></script>
   <script src="dunia.js"></script>
   <script src="dca.js"></script>
+  <script>
+    /* pengaman: bila ada file aplikasi gagal dimuat / versi tercampur (koneksi lambat), tawarkan muat ulang bersih */
+    (function () {
+      var need = ['renderPorto', 'loadDetail', 'computeRebalance', 'bigFlowHome', 'timing', 'dcaCard'];
+      var miss = need.filter(function (f) { return typeof window[f] !== 'function'; });
+      if (!miss.length) return;
+      var b = document.createElement('div');
+      b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#7c2d12;color:#fff;padding:12px 14px;border-radius:8px;font:14px system-ui;display:flex;gap:10px;align-items:center;justify-content:space-between';
+      b.innerHTML = '<span>Sebagian file aplikasi gagal dimuat (koneksi lambat?).</span><button style="background:#fff;color:#7c2d12;border:0;border-radius:6px;padding:8px 12px;font-weight:700">Muat ulang</button>';
+      b.querySelector('button').onclick = function () {
+        var done = function () { location.reload(); };
+        if (window.caches) caches.keys().then(function (k) { return Promise.all(k.filter(function (x) { return x.indexOf('shell-') === 0; }).map(function (x) { return caches.delete(x); })); }).then(done, done); else done();
+      };
+      document.body.appendChild(b);
+    })();
+  </script>
 </body>
 </html>

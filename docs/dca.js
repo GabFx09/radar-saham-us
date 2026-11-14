@@ -111,7 +111,7 @@ function dcaCard(rows, valUsd) {
     ${timingNote ? `<p class="small" style="margin:10px 0 0">${timingNote}</p>` : ''}
     ${D.amt > 0 ? `<details style="margin-top:10px"><summary class="small"><b>Ilustrasi bila rutin ${rp(D.amt)}/bulan</b></summary>
       <div class="cmp-scroll" style="margin-top:6px"><table class="hold-table"><tr><th>Lama</th><th class="r">Total setor</th><th class="r">Return 6%/thn</th><th class="r">Return 10%/thn</th></tr>
-      ${[5, 10, 20].map((y) => `<tr><td>${y} tahun <span class="faint small">(usia ${21 + y})</span></td><td class="r mono">${rp(pvIdr + D.amt * 12 * y)}</td><td class="r mono">${rp(fvMonthly(pvIdr, D.amt, 0.06, y))}</td><td class="r mono"><b>${rp(fvMonthly(pvIdr, D.amt, 0.10, y))}</b></td></tr>`).join('')}
+      ${[5, 10, 20].map((y) => `<tr><td>${y} tahun</td><td class="r mono">${rp(pvIdr + D.amt * 12 * y)}</td><td class="r mono">${rp(fvMonthly(pvIdr, D.amt, 0.06, y))}</td><td class="r mono"><b>${rp(fvMonthly(pvIdr, D.amt, 0.10, y))}</b></td></tr>`).join('')}
       </table></div>
       <p class="small faint" style="margin:6px 0 0">Termasuk portofolio sekarang ${rp(pvIdr)} sebagai modal awal. Rata-rata jangka panjang S&amp;P 500 ±10%/thn dalam dolar; nilai riil tiap tahun bisa jauh di atas atau di bawah — ilustrasi, bukan janji.</p></details>` : ''}
     ${brokerSettings()}
@@ -132,16 +132,29 @@ function brokerSettings() {
   </details>`;
 }
 
+/* catat pembelian; simpan juga per transaksi (lots) agar perbandingan S&P 500 memakai tanggal tiap pembelian */
 function addPurchase(sym, qty, price, date) {
   const st = App.bySym[sym];
   const ex = App.holdings.find((h) => h.sym === sym);
+  const lot = price > 0 ? { d: date, q: qty, c: price } : null;
   if (ex) {
     const q0 = Number(ex.qty) || 0, c0 = Number(ex.cost) || 0;
-    ex.cost = c0 ? (q0 * c0 + qty * price) / (q0 + qty) : price;
+    if (!ex.lots && c0 && ex.date && q0) ex.lots = [{ d: ex.date, q: q0, c: c0 }];
+    ex.cost = price > 0 && c0 ? (q0 * c0 + qty * price) / (q0 + qty) : (price > 0 ? price : c0 || null);
     ex.qty = Math.round((q0 + qty) * 10000) / 10000;
+    if (ex.lots && lot) ex.lots.push(lot); else delete ex.lots;
+    if (!ex.date) ex.date = date;
   } else {
-    App.holdings.push({ sym, qty, cost: price, date, buy: { rating: st.rating, score: st.score, fund: st.fund, fair: st.val ? st.val.fair : null, date }, added: date });
+    const h = { sym, qty, cost: price > 0 ? price : null, date,
+      buy: { rating: st.rating, score: st.score, fund: st.fund, fair: st.val ? st.val.fair : null, date }, added: new Date().toISOString().slice(0, 10) };
+    if (lot) h.lots = [lot];
+    App.holdings.push(h);
   }
+}
+function lotsOf(r) {
+  const L = r.h.lots;
+  if (Array.isArray(L) && L.length && L.every((x) => x.d && x.q > 0 && x.c > 0) && Math.abs(L.reduce((a, x) => a + x.q, 0) - r.qty) < 1e-6 * Math.max(1, r.qty)) return L;
+  return r.cost && r.h.date ? [{ d: r.h.date, q: r.qty, c: r.cost }] : null;
 }
 
 function bindDca(rows, el) {
@@ -187,34 +200,44 @@ function benchCard(rows) {
   if (!spy || !spy.c) return `<div class="card card-pad" style="margin-top:12px">${head}<p class="small muted">Memuat data S&amp;P 500…</p></div>`;
   const n = spy.d.length, spyNow = spy.c[n - 1];
   const idx = (d) => { const i = spy.d.findIndex((x) => x >= d); return i < 0 ? n - 1 : i; };
-  const ok = rows.filter((r) => r.cost && r.h.date && r.h.date >= spy.d[0]);
-  const skip = rows.length - ok.length;
-  if (!ok.length) return `<div class="card card-pad" style="margin-top:12px">${head}<p class="small muted">Isi <b>harga beli</b> dan <b>tanggal beli</b> (✎ di tabel Kepemilikan) agar portofolio bisa dibandingkan dengan membeli S&amp;P 500 pada hari yang sama.</p></div>`;
+  const noData = rows.filter((r) => !lotsOf(r));
+  const tooOld = rows.filter((r) => lotsOf(r) && lotsOf(r).some((l) => l.d < spy.d[0]));
+  const ok = rows.filter((r) => lotsOf(r) && !tooOld.includes(r));
+  const skipTxt = [noData.length ? `${noData.map((r) => esc(r.s.sym)).join(', ')} dilewati (harga/tanggal beli kosong).` : '',
+    tooOld.length ? `${tooOld.map((r) => esc(r.s.sym)).join(', ')} dilewati (dibeli sebelum ${fmt.date(spy.d[0])}, di luar data S&amp;P 500).` : ''].join(' ');
+  if (!ok.length) return `<div class="card card-pad" style="margin-top:12px">${head}<p class="small muted">${noData.length ? 'Isi <b>harga beli</b> dan <b>tanggal beli</b> (✎ di tabel Kepemilikan) agar portofolio bisa dibandingkan dengan membeli S&amp;P 500 pada hari yang sama. ' : ''}${skipTxt}</p></div>`;
   const items = ok.map((r) => {
-    const i0 = idx(r.h.date), rB = spyNow / spy.c[i0] - 1, rS = r.s.price / r.cost - 1;
-    return { r, i0, rB, rS, valB: r.basis * (1 + rB) };
+    const lots = lotsOf(r).map((l) => ({ ...l, i: idx(l.d) }));
+    const basis = lots.reduce((a, l) => a + l.q * l.c, 0);
+    const valB = lots.reduce((a, l) => a + l.q * l.c * spyNow / spy.c[l.i], 0);
+    return { r, lots, basis, i0: Math.min(...lots.map((l) => l.i)), d0: lots.map((l) => l.d).sort()[0], rB: valB / basis - 1, rS: r.val / basis - 1, valB };
   });
-  const basis = items.reduce((a, x) => a + x.r.basis, 0);
+  const basis = items.reduce((a, x) => a + x.basis, 0);
   const val = items.reduce((a, x) => a + x.r.val, 0);
   const valB = items.reduce((a, x) => a + x.valB, 0);
   const diff = val - valB;
   // grafik nilai: portofolio (lembar sekarang × harga historis) vs uang yang sama di S&P 500
   const i0 = Math.min(...items.map((x) => x.i0));
-  const dates = spy.d.slice(i0);
+  // grafik hanya pada rentang yang punya riwayat harga semua saham (riwayat saham ±2 tahun)
+  const hStart = items.reduce((m, x) => { const h = App.histCache[x.r.s.sym]; return h && h.d[0] > m ? h.d[0] : m; }, '');
+  const c0 = Math.max(i0, hStart ? idx(hStart) : i0);
+  const dates = spy.d.slice(c0);
   const maps = {};
   items.forEach((x) => { const h = App.histCache[x.r.s.sym]; if (h) { const m = {}; h.d.forEach((d, k) => { m[d] = h.c[k]; }); maps[x.r.s.sym] = m; } });
   const last = {};
   const port = [], bench = [], cap = [];
   dates.forEach((d, k) => {
-    const j = i0 + k;
+    const j = c0 + k;
     let pv = 0, bv = 0, cv = 0;
     items.forEach((x) => {
-      if (j < x.i0) return;
       const m = maps[x.r.s.sym];
       if (m && m[d] != null) last[x.r.s.sym] = m[d];
-      pv += x.r.qty * (last[x.r.s.sym] ?? x.r.cost);
-      bv += x.r.basis * spy.c[j] / spy.c[x.i0];
-      cv += x.r.basis;
+      x.lots.forEach((l) => {
+        if (j < l.i) return;
+        pv += l.q * (last[x.r.s.sym] ?? l.c);
+        bv += l.q * l.c * spy.c[j] / spy.c[l.i];
+        cv += l.q * l.c;
+      });
     });
     port.push(pv); bench.push(bv); cap.push(cv);
   });
@@ -232,10 +255,11 @@ function benchCard(rows) {
       <div><div class="l">Bila di S&amp;P 500</div><div class="v">${fmt.usd(valB, 0)}</div><div class="s ${cls(valB / basis - 1)}">${fmt.pct(valB / basis - 1, 1)}</div></div>
       <div><div class="l">${diff >= 0 ? 'Mengalahkan pasar' : 'Tertinggal dari pasar'}</div><div class="v ${cls(diff)}">${diff >= 0 ? '+' : '−'}${fmt.usd(Math.abs(diff), 0)}</div><div class="s">${fmt.pct(val / valB - 1, 1)} · ${days < 90 ? 'periode masih pendek' : Math.round(days / 30) + ' bulan'}</div></div>
     </div>
+    ${chart && c0 > i0 ? `<p class="small faint" style="margin:0 0 4px">Grafik mulai ${fmt.date(spy.d[c0])} (batas riwayat harga saham); angka di atas tetap dihitung sejak tanggal beli.</p>` : ''}
     ${chart ? `<div class="legend small" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:4px"><span><i style="display:inline-block;width:12px;height:3px;background:#0284c7;vertical-align:middle"></i> Portofolio</span><span><i style="display:inline-block;width:12px;height:3px;background:#f59e0b;vertical-align:middle"></i> S&amp;P 500</span><span class="faint">- - modal</span></div>${chart}` : ''}
     <div class="cmp-scroll" style="margin-top:8px"><table class="hold-table"><tr><th>Saham</th><th>Sejak</th><th class="r">Saham</th><th class="r">S&amp;P 500</th><th class="r">Selisih</th></tr>
-    ${items.sort((a, b) => (b.rS - b.rB) - (a.rS - a.rB)).map((x) => `<tr><td><b>${esc(x.r.s.sym)}</b></td><td class="small">${fmt.date(x.r.h.date)}</td><td class="r mono ${cls(x.rS)}">${fmt.pct(x.rS, 1)}</td><td class="r mono ${cls(x.rB)}">${fmt.pct(x.rB, 1)}</td><td class="r mono ${cls(x.rS - x.rB)}"><b>${fmt.pct(x.rS - x.rB, 1)}</b></td></tr>`).join('')}
+    ${items.sort((a, b) => (b.rS - b.rB) - (a.rS - a.rB)).map((x) => `<tr><td><b>${esc(x.r.s.sym)}</b></td><td class="small">${fmt.date(x.d0)}${x.lots.length > 1 ? ` <span class="faint">(${x.lots.length}×)</span>` : ''}</td><td class="r mono ${cls(x.rS)}">${fmt.pct(x.rS, 1)}</td><td class="r mono ${cls(x.rB)}">${fmt.pct(x.rB, 1)}</td><td class="r mono ${cls(x.rS - x.rB)}"><b>${fmt.pct(x.rS - x.rB, 1)}</b></td></tr>`).join('')}
     </table></div>
-    <p class="small faint" style="margin:8px 0 0">S&amp;P 500 = SPY termasuk dividen; return saham Anda dihitung dari harga beli (dividen yang diterima belum dihitung). Biaya &amp; kurs sama untuk keduanya sehingga diabaikan. Grafik memakai jumlah lembar sekarang sejak tanggal beli pertama — perkiraan bila Anda menambah posisi bertahap.${skip ? ` ${skip} saham dilewati (harga/tanggal beli kosong).` : ''} Bila dalam 1–2 tahun portofolio terus tertinggal, pertimbangkan menaruh sebagian besar dana di ETF indeks.</p>
+    <p class="small faint" style="margin:8px 0 0">S&amp;P 500 = SPY termasuk dividen; return saham Anda dihitung dari harga beli (dividen yang diterima belum dihitung). Biaya &amp; kurs sama untuk keduanya sehingga diabaikan. Pembelian lewat tombol DCA / + Tambah dicatat per tanggal; posisi lama tanpa catatan per transaksi dianggap dibeli seluruhnya pada tanggal beli. ${skipTxt} Bila dalam 1–2 tahun portofolio terus tertinggal, pertimbangkan menaruh sebagian besar dana di ETF indeks.</p>
   </div>`;
 }
