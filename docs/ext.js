@@ -405,7 +405,7 @@ async function dataStatus() {
   el.innerHTML = `<table class="hold-table">
     <tr><th>Sumber</th><th class="r">Diperbarui</th><th>Cakupan</th></tr>
     ${row('Harga live', lv && lv.t, 1.5, lv ? `${Object.keys(lv.assets || {}).length} aset · ${Object.keys(lv.stocks || {}).length} saham` : '')}
-    ${row('Skor &amp; fundamental', App.data.generated, 36, `${S.length} saham · revisi estimasi ${S.filter((s) => s.rev != null).length} · orang dalam ${S.filter((s) => s.ins).length} · valuasi historis ${S.filter((s) => s.own).length}`)}
+    ${row('Skor &amp; fundamental', App.data.generated, 36, `${S.length} saham · revisi estimasi ${S.filter((s) => s.rev != null).length} · orang dalam ${(App.data.cov || {}).ins ?? S.filter((s) => s.ins).length} · valuasi historis ${(App.data.cov || {}).own ?? S.filter((s) => s.own).length}`)}
     ${row('Monitor makro', mk && mk.generated, 36, mk ? `${mk.assets.reduce((a, g) => a + g.rows.length, 0)} aset · F&amp;G ${mk.fg ? Math.round(mk.fg.now) : '–'}` : '')}
     ${row('Berita penting', br && br.generated, 36, br ? `${br.items.length} berita` : '')}
     ${row('Kalender IPO', ip && ip.generated, 36, ip ? `${ip.upcoming.length} akan IPO · ${ip.recent.length} terbaru` : '')}

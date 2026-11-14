@@ -131,12 +131,29 @@ const RATINGS = ['STRONG BUY', 'BUY', 'HOLD', 'HINDARI'];
 const CAPS = { Mega: 'Mega (>$200M)', Large: 'Large ($10–200M)', Mid: 'Mid ($2–10M)', Small: 'Small (<$2M)' };
 
 /* ------------------------------------------------------------ data */
-async function loadData() {
-  const res = await fetch('data/stocks.json', { cache: 'no-cache' });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const d = await res.json();
+function setData(d) {
   App.data = d;
   App.bySym = Object.fromEntries(d.stocks.map((s) => [s.sym, s]));
+}
+async function loadData() {
+  // Data tersimpan (dari kunjungan sebelumnya) langsung ditampilkan; versi terbaru diunduh di latar.
+  const net = fetch('data/stocks.json', { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  let cached = null;
+  try {
+    if ('caches' in window) {
+      const c = await caches.match('data/stocks.json', { ignoreSearch: true });
+      if (c) cached = await c.json();
+    }
+  } catch (e) { cached = null; }
+  if (!cached) { setData(await net); return; }
+  setData(cached);
+  net.then((d) => {
+    if (d.generated === App.data.generated) return;
+    setData(d);
+    if (typeof applyLive === 'function') applyLive();
+    render();
+    toast('Data terbaru dimuat');
+  }).catch(() => {});
 }
 async function loadHist(sym) {
   if (App.histCache[sym]) return App.histCache[sym];

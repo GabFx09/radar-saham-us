@@ -1752,7 +1752,19 @@ def main():
     detail_dir = os.path.join(OUT_DIR, "detail")
     os.makedirs(detail_dir, exist_ok=True)
     heavy = {"fl", "pros", "cons", "thesis", "summary", "website", "hist", "piotroski_checks", "mp", "tech_d", "plan",
-             "est", "earnings_last", "country", "qtr", "fcf_src"}
+             "est", "earnings_last", "country", "qtr", "fcf_src", "ins", "own"}
+
+    def sig(x, n=3):
+        if isinstance(x, float) and x and math.isfinite(x):
+            return float(f"{x:.{n}g}")
+        return x
+
+    def spark_q(arr):
+        # bentuk grafik mini saja: 0-99 relatif terhadap min/maks (harga asli ada di riwayat)
+        if not arr or len(arr) < 2:
+            return arr
+        lo, hi = min(arr), max(arr)
+        return [round((v - lo) / ((hi - lo) or 1) * 99) for v in arr]
     m_list = ["pe_fwd", "peg", "roe", "roic", "rev_cagr3", "rev_growth", "eps_growth_fwd", "piotroski", "div_yield",
               "payout", "fcf_yield", "op_margin", "de", "beta"]
     slim = []
@@ -1762,14 +1774,17 @@ def main():
         with open(os.path.join(detail_dir, f"{s_['sym']}.json"), "w", encoding="utf-8") as fh:
             json.dump(det, fh, ensure_ascii=False, separators=(",", ":"))
         sl = {k: v for k, v in s_.items() if k not in heavy}
-        sl["m"] = {k: s_["m"].get(k) for k in m_list}
+        sl["m"] = {k: sig(s_["m"].get(k)) for k in m_list}
+        sl["spark"] = spark_q(s_.get("spark"))
+        if s_.get("ret"):
+            sl["ret"] = {k: sig(v) for k, v in s_["ret"].items()}
         sl["pro1"] = s_["pros"][0]["text"] if s_["pros"] else s_["thesis"]
         if s_["val"]:
             sl["val"] = {k: s_["val"].get(k) for k in ("fair", "upside", "confidence", "capped")}
         if s_.get("q"):
             mc = s_["q"].get("mc")
-            sl["q"] = {k: s_["q"].get(k) for k in ("vol", "mdd", "sharpe", "beta_calc")}
-            sl["q"]["mc"] = {k: mc.get(k) for k in ("p_up", "p_loss20", "exp")} if mc else None
+            sl["q"] = {k: sig(s_["q"].get(k)) for k in ("vol", "mdd", "sharpe", "beta_calc")}
+            sl["q"]["mc"] = {k: sig(mc.get(k)) for k in ("p_up", "p_loss20", "exp")} if mc else None
         if s_.get("geo"):
             sl["geo"] = {k: s_["geo"].get(k) for k in ("score", "opp", "risk", "risk_label")}
         slim.append(sl)
@@ -1786,6 +1801,7 @@ def main():
         "count": len(stocks),
         "market": market,
         "sectors": sector_out,
+        "cov": {"ins": sum(1 for x in stocks if x.get("ins")), "own": sum(1 for x in stocks if x.get("own"))},
         "stocks": slim,
     }
     with open(os.path.join(OUT_DIR, "stocks.json"), "w", encoding="utf-8") as fh:
