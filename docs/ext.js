@@ -297,6 +297,7 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
       <label class="tog"><input type="checkbox" id="nIntra" ${N.intraday ? 'checked' : ''}> Alert harga intraday (tiap 30 menit)</label>
       <label class="tog"><input type="checkbox" id="nFlow" ${N.flow !== false ? 'checked' : ''}> 💰 Dana masuk / 💸 keluar besar pada saham watchlist &amp; portofolio (tiap ±30 menit saat bursa buka)</label>
       <label class="tog"><input type="checkbox" id="nFlowMkt" ${N.flow_market !== false ? 'checked' : ''}> 💰 Dana masuk besar ke saham Buy/Strong Buy mana pun</label>
+      <label class="tog"><input type="checkbox" id="nMonthly" ${N.monthly !== false ? 'checked' : ''}> 📅 Laporan bulanan (awal bulan): portofolio vs S&amp;P 500, DCA, kekayaan &amp; dana darurat, target</label>
       <label class="tog"><input type="checkbox" id="nAuto" ${N.auto_plan ? 'checked' : ''}> Alert otomatis saat saham watchlist menyentuh target / stop loss model</label>
       <label class="tog">Alert bila saham watchlist bergerak ≥ <input type="number" id="nMove" min="1" max="30" step="0.5" value="${N.move_pct}" style="width:70px"> % dalam sehari</label>
       <label class="tog"><input type="checkbox" id="nNews" ${N.news ? 'checked' : ''}> Berita sangat penting tentang saham watchlist (akuisisi, investigasi, panduan laba, pergantian CEO, FDA, kebangkrutan…)</label>
@@ -365,14 +366,14 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
     } catch (e) { out.textContent = 'Gagal: ' + e.message; }
   };
   const saveN = () => {
-    App.notify = { ...App.notify, profile: App.notify.profile || 'seimbang', daily: $('#nDaily').checked, intraday: $('#nIntra').checked, auto_plan: $('#nAuto').checked, flow: $('#nFlow').checked, flow_market: $('#nFlowMkt').checked,
+    App.notify = { ...App.notify, profile: App.notify.profile || 'seimbang', daily: $('#nDaily').checked, intraday: $('#nIntra').checked, auto_plan: $('#nAuto').checked, flow: $('#nFlow').checked, flow_market: $('#nFlowMkt').checked, monthly: $('#nMonthly').checked,
       move_pct: clamp(parseFloat($('#nMove').value) || 5, 1, 30), news: $('#nNews').checked,
       news_market: $('#nNewsMkt').checked, news_level: $('#nNewsLvl').value };
     store.set('notify', App.notify);
     cloudChanged();
     toast('Preferensi disimpan');
   };
-  ['#nDaily', '#nIntra', '#nFlow', '#nFlowMkt', '#nAuto', '#nMove', '#nNews', '#nNewsMkt', '#nNewsLvl'].forEach((id) => { $(id).onchange = saveN; });
+  ['#nDaily', '#nIntra', '#nFlow', '#nFlowMkt', '#nMonthly', '#nAuto', '#nMove', '#nNews', '#nNewsMkt', '#nNewsLvl'].forEach((id) => { $(id).onchange = saveN; });
   $$('[data-delal]').forEach((b) => { b.onclick = () => { delete App.alerts[b.dataset.delal]; store.set('alerts', App.alerts); cloudChanged(); render(); }; });
   $('#bkCopy').onclick = async () => {
     const code = 'RS1:' + btoa(unescape(encodeURIComponent(JSON.stringify(cloudPayload()))));

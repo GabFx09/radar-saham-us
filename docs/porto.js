@@ -159,6 +159,7 @@ function renderPorto(el) {
     </div>
     ${typeof profileCard === 'function' ? profileCard() : ''}
     ${typeof coreCard === 'function' ? coreCard() : ''}
+    ${typeof wealthCard === 'function' ? wealthCard(tot.val) : ''}
     ${typeof goalCard === 'function' ? goalCard(tot.val) : ''}
     ${typeof dcaCard === 'function' ? dcaCard(rows, tot.val) : ''}
     ${rows.length ? `<div class="card card-pad" style="margin-top:12px">
@@ -206,6 +207,7 @@ function renderPorto(el) {
   if (typeof bindRebalance === 'function') bindRebalance(rows, el);
   if (typeof bindProfile === 'function') bindProfile(el);
   if (typeof bindCore === 'function') bindCore(el);
+  if (typeof bindWealth === 'function') bindWealth(el);
   if (typeof bindGoal === 'function') bindGoal(el);
   if (typeof bindDca === 'function') bindDca(rows, el);
   if (typeof bindSpt === 'function') bindSpt(rows, el);

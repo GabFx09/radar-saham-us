@@ -393,6 +393,7 @@ def digest():
         log("Ringkasan harian dimatikan di pengaturan.")
         try:  # pengingat DCA tetap jalan walau ringkasan dimatikan
             dca_reminder(st, state, next((r["last"] for g in mk.get("assets", []) for r in g["rows"] if r["sym"] == "IDR=X"), None))
+            monthly_report(cfg, state, d, mk)
             flush()
         except Exception as e:  # noqa: BLE001
             log(f"Pengingat DCA gagal: {e}")
@@ -536,6 +537,7 @@ def digest():
     state["adv"] = {k: v["act"] for k, v in (CTX.get("advice") or {}).items()}
     try:
         dca_reminder(st, state, rows.get("IDR=X", {}).get("last"))
+        monthly_report(cfg, state, d, mk)
     except Exception as e:  # noqa: BLE001
         log(f"Pengingat DCA gagal: {e}")
     if tgl.weekday() == 0 and mine:  # Senin: laporan mingguan bergrafik
@@ -547,6 +549,120 @@ def digest():
             log(f"Grafik mingguan gagal: {e}")
     flush()
     log("Ringkasan terkirim." if TOKEN else "")
+
+
+# ----------------------------------------------------------------------------- kekayaan & dana darurat
+def rp(x):
+    return "Rp " + f"{x:,.0f}".replace(",", ".")
+
+
+def ef_part(st, amt):
+    """Bagian DCA bulan ini yang disisihkan ke dana darurat (sama dengan efAllocation di docs/kekayaan.js)."""
+    w = st.get("wealth") or {}
+    exp, ef, tgt = float(w.get("exp") or 0), float(w.get("ef") or 0), float(w.get("efT") or 6)
+    if not w.get("prio", True) or exp <= 0 or amt <= 0:
+        return 0.0
+    need = max(0.0, tgt * exp - ef)
+    return min(need, amt * 0.5)
+
+
+def _close_at(hist, date):
+    if not hist or not hist.get("d"):
+        return None
+    c = None
+    for d_, v in zip(hist["d"], hist["c"]):
+        if d_ > date:
+            break
+        c = v
+    return c if c is not None else hist["c"][0]
+
+
+def monthly_report(cfg, state, d, mk):
+    """Laporan awal bulan: portofolio vs S&P 500, DCA bulan lalu, kekayaan & dana darurat, target, saham yang perlu ditinjau."""
+    st = cfg["settings"]
+    if st.get("monthly") is False:
+        return
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=7)))
+    month = now.strftime("%Y-%m")
+    if state.get("monthly_sent") == month or now.day > 10:
+        return
+    hs = [h for h in cfg.get("holdings") or [] if h.get("sym")]
+    w = st.get("wealth") or {}
+    if not hs and not w:
+        return
+    state["monthly_sent"] = month
+    bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+    prev = (now.replace(day=1) - dt.timedelta(days=1))
+    pm, pm_name = prev.strftime("%Y-%m"), f"{bulan[prev.month - 1]} {prev.year}"
+    m_ago = (now - dt.timedelta(days=30)).strftime("%Y-%m-%d")
+    by = {s["sym"]: s for s in d["stocks"]}
+    by.update({e["sym"]: e for e in d.get("etfs") or []})
+    rows = {r["sym"]: r for g in mk.get("assets", []) for r in g["rows"]}
+    idr = (rows.get("IDR=X") or {}).get("last") or 16500
+    spy = load_json(os.path.join("history", "SPY.json"))
+    spy_now = spy["c"][-1] if spy else None
+    L = []
+    val = val_m1 = basis = bench = 0.0
+    for h in hs:
+        s = by.get(h["sym"])
+        if not s:
+            continue
+        q = float(h.get("qty") or 0)
+        val += q * s["price"]
+        hist = load_json(os.path.join("history", f"{h['sym']}.json"))
+        c1 = _close_at(hist, m_ago)
+        val_m1 += q * (c1 or s["price"])
+        lots = h.get("lots") if isinstance(h.get("lots"), list) and h.get("lots") else (
+            [{"d": h["date"], "q": q, "c": float(h["cost"])}] if h.get("cost") and h.get("date") else [])
+        for l in lots:
+            s0 = _close_at(spy, l["d"]) if spy else None
+            if s0:
+                basis += l["q"] * l["c"]
+                bench += l["q"] * l["c"] * spy_now / s0
+    if val:
+        spy_m = (spy_now / _close_at(spy, m_ago) - 1) if spy else None
+        L.append(f"💼 Portofolio <b>{usd(val)}</b> (≈ {rp(val * idr)}) · 30 hari {pct(val / val_m1 - 1 if val_m1 else None, 1)}"
+                 + (f" vs S&amp;P 500 {pct(spy_m, 1)}" if spy_m is not None else ""))
+        if basis:
+            own = sum(float(h.get("qty") or 0) * by[h["sym"]]["price"] for h in hs if h["sym"] in by and (h.get("lots") or (h.get("cost") and h.get("date"))))
+            diff = own / basis - bench / basis
+            L.append(f"📊 Sejak beli: {pct(own / basis - 1, 1)} vs S&amp;P 500 {pct(bench / basis - 1, 1)} → "
+                     + ("<b>mengalahkan pasar</b>" if diff >= 0 else "<b>tertinggal dari pasar</b>") + f" {pct(diff, 1)}")
+    dca = st.get("dca") or {}
+    if dca.get("on") and float(dca.get("amt") or 0) > 0:
+        bought = [l for h in hs for l in (h.get("lots") or []) if str(l.get("d", "")).startswith(pm)]
+        if bought:
+            L.append(f"🗓️ DCA {pm_name}: {len(bought)} pembelian tercatat (≈ {usd(sum(l['q'] * l['c'] for l in bought))}) ✓")
+        else:
+            L.append(f"🗓️ DCA {pm_name}: <b>belum ada pembelian tercatat</b> (rencana {rp(float(dca['amt']))}) — sudah beli? catat lewat tombol di Rencana DCA.")
+    if w:
+        keys = ("ef", "sav", "rdpu", "gold", "other")
+        other = sum(float(w.get(k) or 0) for k in keys)
+        debt = float(w.get("debt") or 0)
+        total = val * idr + other - debt
+        if total > 0:
+            L.append(f"🏦 Kekayaan bersih ≈ <b>{rp(total)}</b> · saham &amp; ETF {round(val * idr / (total + debt) * 100)}%")
+        exp, ef, tgt = float(w.get("exp") or 0), float(w.get("ef") or 0), float(w.get("efT") or 6)
+        if exp > 0:
+            mo = ef / exp
+            L.append(f"🛟 Dana darurat {mo:.1f} bulan pengeluaran (target {tgt:g})"
+                     + (" ✓" if mo >= tgt else f" — kurang {rp(tgt * exp - ef)}; DCA bulan ini sisihkan {rp(ef_part(st, float(dca.get('amt') or 0)))} ke tabungan/RDPU" if w.get("prio", True) and dca.get("amt") else f" — kurang {rp(tgt * exp - ef)}"))
+    g = st.get("goal") or {}
+    if g.get("amt"):
+        pv = val * idr + (sum(float(w.get(k) or 0) for k in ("sav", "rdpu", "gold", "other")) if w.get("inGoal", True) else 0)
+        n = max(1, (int(g.get("year", now.year + 9)) - now.year) * 12 + (12 - now.month))
+        r = float(g.get("r") or 0.08)
+        rm = (1 + r) ** (1 / 12) - 1
+        gg = (1 + rm) ** n
+        need = max(0.0, (float(g["amt"]) - pv * gg) * rm / (gg - 1))
+        L.append(f"🎯 Target {rp(float(g['amt']))} ({g.get('year')}): {round(pv / float(g['amt']) * 100)}% · perlu ±{rp(need)}/bulan (return {r * 100:g}%/thn)")
+    bad = [(k, a) for k, a in (CTX.get("advice") or {}).items() if a["act"] in ("JUAL", "KURANGI")]
+    if bad:
+        L.append("⚠️ Perlu ditinjau: " + ", ".join(f"<b>{esc(k)}</b> ({a['act']})" for k, a in bad))
+    if not L:
+        return
+    L.append(f"\n<a href=\"{SITE}#/portofolio\">Buka Portofolio</a> · bukan nasihat investasi")
+    deliver("monthly", f"📅 Laporan bulanan · {bulan[now.month - 1]} {now.year}", L, f"{SITE}#/portofolio")
 
 
 # ----------------------------------------------------------------------------- pengingat DCA bulanan
@@ -564,8 +680,12 @@ def dca_reminder(st, state, idr):
     br = st.get("broker") or {}
     fx_cost = float(br.get("fx", 0.005)) + float(br.get("fee", 0.003))
     lines = [f"Jadwal menabung saham bulan ini: <b>Rp {amt:,.0f}</b>".replace(",", ".")]
+    efp = ef_part(st, amt)
+    if efp > 0:
+        lines.append(f"🛟 Dana darurat belum cukup — sisihkan <b>{rp(efp)}</b> ke tabungan/RDPU, sisanya {rp(amt - efp)} untuk saham.")
+        amt -= efp
     if idr:
-        lines.append(f"≈ ${amt / idr * (1 - fx_cost):,.0f} setelah perkiraan biaya kurs &amp; transaksi (kurs {idr:,.0f}).".replace(",", "."))
+        lines.append(f"≈ ${amt / idr * (1 - fx_cost):,.0f} untuk saham setelah perkiraan biaya kurs &amp; transaksi (kurs {idr:,.0f}).".replace(",", "."))
     lines.extend(world_line())
     lines.append("Buka Radar → Portofolio → <b>Rencana DCA Bulanan</b> untuk daftar saham &amp; nominal beli per saham, lalu catat pembeliannya.")
     deliver("dca", "🗓️ Waktunya DCA bulan ini", lines, f"{SITE}#/portofolio", prio="normal")

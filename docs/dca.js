@@ -31,7 +31,8 @@ function idrNow() {
 /* ------------------------------------------------------------ rencana DCA */
 function dcaPlan(rows) {
   const D = dcaCfg(), B = brokerCfg(), K = idrNow();
-  const gross = D.amt / K.v;
+  const efPart = typeof efAllocation === 'function' && wealthSet() ? efAllocation(wealthCfg(), D.amt) : 0; // dana darurat dulu
+  const gross = (D.amt - efPart) / K.v;
   const fxCost = gross * B.fx;
   const usd = gross - fxCost;
   if (!(usd > 0)) return null;
@@ -67,7 +68,7 @@ function dcaPlan(rows) {
   const maxAfter = rows.length || orders.length
     ? Math.max(...rows.map((r) => (r.val + (orders.find((o) => o.s.sym === r.s.sym) || { cost: 0 }).cost) / after), ...orders.map((o) => o.wAfter))
     : 0;
-  return { D, B, K, gross, fxCost, usd, feeTot, left, orders, R, maxBefore, maxAfter };
+  return { D, B, K, efPart, gross, fxCost, usd, feeTot, left, orders, R, maxBefore, maxAfter };
 }
 
 function fvMonthly(pv, pmt, rYear, years) {
@@ -93,10 +94,11 @@ function dcaCard(rows, valUsd) {
     </div>
     ${D.on && !(App.cloud && App.cloud.gistId) ? '<p class="small warn" style="margin:6px 0 0">Pengingat butuh sinkronisasi cloud — <a class="link" href="#/pengaturan">hubungkan di Pengaturan</a>.</p>' : ''}
     ${P ? `<div class="kv k3" style="margin:10px 0">
-      <div><div class="l">Dana bulan ini</div><div class="v">${rp(D.amt)}</div><div class="s">kurs ${Math.round(P.K.v).toLocaleString('id-ID')} (${esc(P.K.src)})</div></div>
+      <div><div class="l">Dana bulan ini</div><div class="v">${rp(D.amt)}</div><div class="s">${P.efPart ? `saham ${rp(D.amt - P.efPart)} · ` : ''}kurs ${Math.round(P.K.v).toLocaleString('id-ID')} (${esc(P.K.src)})</div></div>
       <div><div class="l">Biaya ${esc(B.n)}</div><div class="v">${fmt.usd(P.fxCost + P.feeTot, 2)}</div><div class="s">kurs ${pctID(B.fx)} ${fmt.usd(P.fxCost, 2)} · transaksi ${pctID(B.fee)} ${fmt.usd(P.feeTot, 2)}</div></div>
       <div><div class="l">Diinvestasikan</div><div class="v">${fmt.usd(P.usd - P.feeTot - P.left, 2)}</div><div class="s">${P.left > 0.5 ? `sisa ${fmt.usd(P.left, 2)} (bukan pecahan)` : `${P.orders.length} saham`}</div></div>
     </div>
+    ${P.efPart ? `<p class="small warn" style="margin:0 0 8px">🛟 Dana darurat belum cukup — sisihkan <b>${rp(P.efPart)}</b> ke tabungan/RDPU dulu; sisanya ${rp(D.amt - P.efPart)} untuk saham di bawah. <a class="link" href="#wealthCard" onclick="document.getElementById('wealthCard').scrollIntoView({behavior:'smooth'});return false">atur</a></p>` : ''}
     ${P.orders.length ? `<div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th class="r">Beli</th><th class="r">Lembar</th><th class="r">Bobot</th></tr>
       ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div></td>
@@ -177,7 +179,8 @@ function bindDca(rows, el) {
   const P = dcaPlan(rows);
   const rec = $('#dcaRec');
   if (rec && P) rec.onclick = () => {
-    if (!confirm(`Catat pembelian ${P.orders.map((o) => `${o.s.sym} ${o.sh}`).join(', ')} lembar ke portofolio?`)) return;
+    if (!confirm(`Catat pembelian ${P.orders.map((o) => `${o.s.sym} ${o.sh}`).join(', ')} lembar ke portofolio?${P.efPart ? `\nDana darurat juga ditambah ${rp(P.efPart)}.` : ''}`)) return;
+    if (P.efPart && typeof wealthCfg === 'function') { const W = wealthCfg(); W.ef += P.efPart; setNotifyKey('wealth', W); }
     const today = new Date().toISOString().slice(0, 10);
     P.orders.forEach((o) => addPurchase(o.s.sym, o.sh, Math.round(o.s.price * (1 + P.B.fee) * 10000) / 10000, today));
     saveHoldings();
@@ -187,6 +190,7 @@ function bindDca(rows, el) {
   const cp = $('#dcaCopy');
   if (cp && P) cp.onclick = async () => {
     const txt = [`DCA ${new Date().toISOString().slice(0, 7)} · ${rp(P.D.amt)} (${P.B.n}, profil ${prof().n}):`]
+      .concat(P.efPart ? [`- Dana darurat: ${rp(P.efPart)} ke tabungan/RDPU`] : [])
       .concat(P.orders.map((o) => `- ${o.s.sym}: beli ${rp((o.cost + o.fee) / (1 - P.B.fx) * P.K.v)} (~${fmt.usd(o.cost + o.fee, 2)}, ${o.sh} lbr)`)).join('\n');
     try { await navigator.clipboard.writeText(txt); toast('Rencana DCA disalin'); } catch (e) { prompt('Salin:', txt); }
   };
@@ -279,7 +283,7 @@ function goalCalc(pv, G, pmt) {
   return { n, need, fv, months: v >= G.amt ? m : null, real: G.amt / Math.pow(1 + G.infl, n / 12) };
 }
 function goalCard(valUsd) {
-  const G = goalCfg(), D = dcaCfg(), K = idrNow().v, pv = valUsd * K;
+  const G = goalCfg(), D = dcaCfg(), K = idrNow().v, extra = typeof goalExtraIdr === 'function' ? goalExtraIdr() : 0, pv = valUsd * K + extra;
   const c = goalCalc(pv, G, D.amt || 0);
   const p = G.amt ? Math.min(1, pv / G.amt) : 0;
   const reach = c.months == null ? null : new Date(new Date().getFullYear(), new Date().getMonth() + c.months, 1);
@@ -292,7 +296,7 @@ function goalCard(valUsd) {
       <label>Tahun <select id="gYear">${Array.from({ length: 36 }, (_, i) => new Date().getFullYear() + 1 + i).map((y) => `<option value="${y}" ${y === G.year ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
       <label>Asumsi return <select id="gR">${[0.06, 0.08, 0.1].map((v) => `<option value="${v}" ${v === G.r ? 'selected' : ''}>${v * 100}%/thn</option>`).join('')}</select></label>
     </div>
-    <div style="margin-top:10px" class="small">Sekarang <b>${rp(pv)}</b> dari <b>${rp(G.amt)}</b> (${Math.round(p * 100)}%)</div>
+    <div style="margin-top:10px" class="small">Sekarang <b>${rp(pv)}</b>${extra ? ` <span class="faint">(termasuk aset lain ${rp(extra)})</span>` : ''} dari <b>${rp(G.amt)}</b> (${Math.round(p * 100)}%)</div>
     <div class="goal-bar"><i style="width:${(p * 100).toFixed(1)}%"></i></div>
     <div class="kv k3" style="margin:10px 0">
       <div><div class="l">Perlu DCA / bulan</div><div class="v">${rp(c.need)}</div><div class="s">${c.n} bulan lagi · return ${Math.round(G.r * 100)}%/thn</div></div>
@@ -316,7 +320,7 @@ function bindGoal(el) {
   ['#gAmt', '#gYear', '#gR'].forEach((id) => { $(id).onchange = save; });
   const u = $('#gUse');
   if (u) u.onclick = () => {
-    const G = goalCfg(), c = goalCalc(holdingRows().reduce((a, r) => a + r.val, 0) * idrNow().v, G, dcaCfg().amt || 0);
+    const G = goalCfg(), c = goalCalc(holdingRows().reduce((a, r) => a + r.val, 0) * idrNow().v + (typeof goalExtraIdr === 'function' ? goalExtraIdr() : 0), G, dcaCfg().amt || 0);
     setNotifyKey('dca', Object.assign(dcaCfg(), { amt: Math.ceil(c.need / 50000) * 50000 }));
     toast('Nominal DCA diperbarui');
     rerender();
