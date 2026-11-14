@@ -662,7 +662,7 @@ def monthly_report(cfg, state, d, mk):
     if not L:
         return
     L.append(f"\n<a href=\"{SITE}#/portofolio\">Buka Portofolio</a> · bukan nasihat investasi")
-    deliver("monthly", f"📅 Laporan bulanan · {bulan[now.month - 1]} {now.year}", L, f"{SITE}#/portofolio")
+    deliver("monthly", f"📅 Laporan bulanan · {bulan[now.month - 1]} {now.year}", L, f"{SITE}#/portofolio?t=ringkasan")
 
 
 # ----------------------------------------------------------------------------- pengingat DCA bulanan
@@ -687,8 +687,8 @@ def dca_reminder(st, state, idr):
     if idr:
         lines.append(f"≈ ${amt / idr * (1 - fx_cost):,.0f} untuk saham setelah perkiraan biaya kurs &amp; transaksi (kurs {idr:,.0f}).".replace(",", "."))
     lines.extend(world_line())
-    lines.append("Buka Radar → Portofolio → <b>Rencana DCA Bulanan</b> untuk daftar saham &amp; nominal beli per saham, lalu catat pembeliannya.")
-    deliver("dca", "🗓️ Waktunya DCA bulan ini", lines, f"{SITE}#/portofolio", prio="normal")
+    lines.append("Buka Radar → Portofolio → tab <b>Rencana</b> → <b>Rencana DCA Bulanan</b> untuk daftar saham &amp; nominal beli per saham, lalu catat pembeliannya.")
+    deliver("dca", "🗓️ Waktunya DCA bulan ini", lines, f"{SITE}#/portofolio?t=rencana", prio="normal")
 
 
 # ----------------------------------------------------------------------------- dana masuk/keluar besar

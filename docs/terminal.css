@@ -345,3 +345,4 @@ pre.code { max-width: 100%; }
 .badge.r-ETF { color: #fff; background: #6366f1; }
 .goal-bar { height: 10px; border-radius: 6px; background: var(--line, #333); overflow: hidden; margin: 6px 0 4px; }
 .goal-bar > i { display: block; height: 100%; background: linear-gradient(90deg, #0ea271, #22c55e); }
+.tab-dot { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--down, #ef4444); color: #fff; font-size: 10px; line-height: 16px; text-align: center; }

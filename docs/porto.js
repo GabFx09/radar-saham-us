@@ -99,6 +99,15 @@ function holdingRows() {
     return { h, s, qty, cost, val, basis, pl: cost ? val - basis : null, plp: cost ? s.price / cost - 1 : null, day };
   }).filter(Boolean);
 }
+const PORTO_TABS = [['ringkasan', 'Ringkasan'], ['rencana', 'Rencana'], ['keuangan', 'Keuangan'], ['analisis', 'Analisis']];
+/** pindah tab Portofolio lalu gulir ke kartu tertentu */
+function portoGo(t, id) {
+  const go = () => { const e = id && document.getElementById(id); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  if (parseHash().parts[0] === 'portofolio' && store.get('portoTab') === t && document.querySelector('.porto-tabs')) { go(); return; }
+  store.set('portoTab', t);
+  location.hash = '#/portofolio?t=' + t;
+  setTimeout(go, 250);
+}
 function renderPorto(el) {
   const rows = holdingRows();
   const missing = rows.filter((r) => !App.histCache[r.s.sym]).map((r) => r.s.sym).concat(rows.length && !App.histCache.SPY ? ['SPY'] : []).concat(!App.histCache.USDIDR && (rows.length || (App.sales || []).length) ? ['USDIDR'] : []);
@@ -128,6 +137,11 @@ function renderPorto(el) {
   rows.forEach((r) => { r.adv = advise(r.h, r.s, closesSince(r.h), w(r)); });
   const order = { JUAL: 0, KURANGI: 1, TAMBAH: 2, TAHAN: 3 };
 
+  const qt = parseHash().query.get('t');
+  let tab = qt || store.get('portoTab', 'ringkasan');
+  if (!PORTO_TABS.some(([k]) => k === tab)) tab = 'ringkasan';
+  store.set('portoTab', tab);
+  const nWarn = rows.filter((r) => r.adv.act === 'JUAL' || r.adv.act === 'KURANGI').length;
   el.innerHTML = `<div class="fade-in">
     ${wlTabs('porto')}
     <h1 class="page-title">Portofolio</h1>
@@ -138,6 +152,8 @@ function renderPorto(el) {
       <div><div class="l">Untung/rugi total</div><div class="v ${cls(plTot)}">${plTot == null ? '–' : (plTot >= 0 ? '+' : '−') + fmt.usd(Math.abs(plTot), 0)}</div><div class="s">${plTot == null ? 'isi harga beli' : fmt.pct(plTot / tot.basis, 1)}</div></div>
       <div><div class="l">Dividen / tahun</div><div class="v">${fmt.usd(divInc, 0)}</div><div class="s">yield ${fmt.pct(tot.val ? divInc / tot.val : null, 2, false)}${divInc && typeof brokerCfg === 'function' ? ` · bersih ${fmt.usd(divInc * (1 - brokerCfg().tax), 0)} stl pajak ${Math.round(brokerCfg().tax * 100)}%` : ''}</div></div>
     </div>` : ''}
+    <nav class="mtabs porto-tabs">${PORTO_TABS.map(([k, n]) => `<a href="#/portofolio?t=${k}" class="${k === tab ? 'on' : ''}">${n}${k === 'ringkasan' && nWarn ? ` <span class="tab-dot">${nWarn}</span>` : ''}</a>`).join('')}</nav>
+    ${tab === 'ringkasan' ? `
     <div class="card card-pad">
       <h3 class="card-title">Kepemilikan (${rows.length})</h3>
       ${rows.length ? `<div class="cmp-scroll"><table class="hold-table">
@@ -157,11 +173,6 @@ function renderPorto(el) {
       </form>
       <datalist id="pSyms">${App.data.stocks.concat(App.etfs || []).map((s) => `<option value="${esc(s.sym)}">${esc(s.name)}</option>`).join('')}</datalist>
     </div>
-    ${typeof profileCard === 'function' ? profileCard() : ''}
-    ${typeof coreCard === 'function' ? coreCard() : ''}
-    ${typeof wealthCard === 'function' ? wealthCard(tot.val) : ''}
-    ${typeof goalCard === 'function' ? goalCard(tot.val) : ''}
-    ${typeof dcaCard === 'function' ? dcaCard(rows, tot.val) : ''}
     ${rows.length ? `<div class="card card-pad" style="margin-top:12px">
       <div class="section-head" style="margin-bottom:8px;align-items:center"><h3 class="card-title" style="margin:0">Penasihat Portofolio</h3><button class="btn" id="pCopy">Salin untuk analisis</button></div>
       <p class="small muted" style="margin:0 0 10px">Saran dari data aplikasi: rekomendasi &amp; nilai wajar model, perubahan fundamental sejak dibeli, trailing stop berbasis volatilitas, risiko simulasi, dan bobot portofolio. Diperbarui setiap update data harian.</p>
@@ -170,10 +181,19 @@ function renderPorto(el) {
       ${App.dunia ? (() => { const T = timing(), D = App.dunia.snap; return `<p class="small" style="margin:8px 0 0">🌍 <b>${esc(D.regimeTitle)}</b> · risiko dunia ${D.risk}/100 · <a class="link" href="#/dunia">waktu masuk <b style="color:${timingColor(T.label)}">${T.label}</b></a> — ${T.label === 'Agresif' ? 'saran TAMBAH boleh dijalankan penuh' : T.label === 'Bertahap' ? 'jalankan saran TAMBAH bertahap (2–3 kali)' : 'jalankan saran TAMBAH kecil-kecil &amp; utamakan saran KURANGI/JUAL'}.</p>`; })() : ''}
       <p class="small faint" style="margin:8px 0 0">Bukan perintah jual-beli. Model tidak tahu tujuan, pajak, dan jangka waktu Anda — gunakan sebagai pemeriksaan kedua.</p>
     </div>
+` : ''}
+    ${typeof benchCard === 'function' ? benchCard(rows) : ''}` : ''}
+    ${tab === 'rencana' ? `
+    ${typeof dcaCard === 'function' ? dcaCard(rows, tot.val) : ''}
     ${typeof rebalanceCard === 'function' ? rebalanceCard(rows) : ''}
-    ${typeof benchCard === 'function' ? benchCard(rows) : ''}
-    ${rows.length ? idrCard(tot.val, expRet, idr) : ''}
-    ${typeof sptCard === 'function' ? sptCard(rows) : ''}
+    ${typeof profileCard === 'function' ? profileCard() : ''}
+    ${typeof coreCard === 'function' ? coreCard() : ''}` : ''}
+    ${tab === 'keuangan' ? `
+    ${typeof wealthCard === 'function' ? wealthCard(tot.val) : ''}
+    ${typeof goalCard === 'function' ? goalCard(tot.val) : ''}
+    ${typeof sptCard === 'function' ? sptCard(rows) : '<div class="card card-pad">–</div>'}` : ''}
+    ${tab === 'analisis' ? (rows.length ? `
+    ${idrCard(tot.val, expRet, idr)}
     <div class="grid-2" style="margin-top:12px">
       <div class="card card-pad"><h3 class="card-title">Alokasi Sektor</h3>
         <div class="port-wrap"><div class="donut-box">${svg}<div class="donut-c"><b>${rows.length}</b><span>saham</span></div></div>
@@ -186,11 +206,11 @@ function renderPorto(el) {
           <div><div class="l">Skor rata-rata</div><div class="v">${Math.round(rows.reduce((a, r) => a + w(r) * r.s.score, 0))}</div><div class="s">tertimbang nilai</div></div>
         </div>
         ${warns.length ? `<ul class="cyc-sig" style="margin-top:12px">${warns.map((x) => `<li class="warn"><span></span><div>${x}</div></li>`).join('')}</ul>` : '<p class="small up" style="margin:10px 0 0">✓ Tidak ada peringatan konsentrasi atau sinyal negatif.</p>'}
-      </div></div>` : ''}
+      </div></div>` : '<div class="card card-pad"><p class="small muted">Tambahkan saham di tab Ringkasan untuk melihat proyeksi rupiah, alokasi sektor, dan risiko portofolio.</p></div>') : ''}
     <p class="disclaimer">Harga memakai data harian terakhir aplikasi (bukan real-time). Saham portofolio otomatis dipantau notifikasi (stop loss, target, gerak besar, laporan keuangan &amp; ex-dividend) bila sinkronisasi cloud aktif.</p>
   </div>`;
 
-  $('#pAdd').onsubmit = (e) => {
+  if ($('#pAdd')) $('#pAdd').onsubmit = (e) => {
     e.preventDefault();
     const sym = $('#pSym').value.trim().toUpperCase();
     if (!App.bySym[sym]) { toast(`${sym} tidak ada di universe`); return; }

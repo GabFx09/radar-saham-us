@@ -91,7 +91,7 @@ async function renderEtf(el, e) {
       <ul class="small" style="margin:0;padding-left:18px">
         <li>Satu pembelian = ratusan perusahaan; satu saham bangkrut hampir tidak terasa.</li>
         <li>Biaya tahunan sangat kecil (${(e.er * 100).toFixed(2)}%) dan tidak perlu memantau laporan keuangan.</li>
-        <li>Cocok sebagai <b>inti</b> portofolio yang dibeli rutin tiap bulan (DCA) — aktifkan di Portofolio → Inti ETF + Satelit.</li>
+        <li>Cocok sebagai <b>inti</b> portofolio yang dibeli rutin tiap bulan (DCA) — aktifkan di <a class="link" href="#/portofolio?t=rencana">Portofolio → Rencana → Inti ETF + Satelit</a>.</li>
         <li>Tetap bisa turun dalam (${fmt.pct(e.dd, 0)} dalam 10 tahun terakhir) — kuncinya tidak panik menjual.</li>
       </ul></div>
   </div>`;

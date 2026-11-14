@@ -98,7 +98,7 @@ function dcaCard(rows, valUsd) {
       <div><div class="l">Biaya ${esc(B.n)}</div><div class="v">${fmt.usd(P.fxCost + P.feeTot, 2)}</div><div class="s">kurs ${pctID(B.fx)} ${fmt.usd(P.fxCost, 2)} · transaksi ${pctID(B.fee)} ${fmt.usd(P.feeTot, 2)}</div></div>
       <div><div class="l">Diinvestasikan</div><div class="v">${fmt.usd(P.usd - P.feeTot - P.left, 2)}</div><div class="s">${P.left > 0.5 ? `sisa ${fmt.usd(P.left, 2)} (bukan pecahan)` : `${P.orders.length} saham`}</div></div>
     </div>
-    ${P.efPart ? `<p class="small warn" style="margin:0 0 8px">🛟 Dana darurat belum cukup — sisihkan <b>${rp(P.efPart)}</b> ke tabungan/RDPU dulu; sisanya ${rp(D.amt - P.efPart)} untuk saham di bawah. <a class="link" href="#wealthCard" onclick="document.getElementById('wealthCard').scrollIntoView({behavior:'smooth'});return false">atur</a></p>` : ''}
+    ${P.efPart ? `<p class="small warn" style="margin:0 0 8px">🛟 Dana darurat belum cukup — sisihkan <b>${rp(P.efPart)}</b> ke tabungan/RDPU dulu; sisanya ${rp(D.amt - P.efPart)} untuk saham di bawah. <a class="link" href="#/portofolio?t=keuangan" onclick="portoGo('keuangan','wealthCard');return false">atur</a></p>` : ''}
     ${P.orders.length ? `<div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th class="r">Beli</th><th class="r">Lembar</th><th class="r">Bobot</th></tr>
       ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div></td>
