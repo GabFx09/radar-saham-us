@@ -88,6 +88,11 @@ def advise(h, s, closes=None, weight=0.0, now=None):
         add(-1, -1, f"Tren teknikal lemah (skor teknikal {tech:.0f})")
     elif tech is not None and tech >= 70:
         add(0.5, 1, f"Tren teknikal kuat ({tech:.0f})")
+    fl = s.get("flow")
+    if fl is not None and fl <= 30:
+        add(-1, -1, f"Uang keluar: aliran dana {fl:.0f}/100 — tekanan jual dominan")
+    elif fl is not None and fl >= 70:
+        add(0.5, 1, f"Uang masuk: aliran dana {fl:.0f}/100 — akumulasi")
     mc = q.get("mc") or {}
     if (mc.get("p_loss20") or 0) >= 0.35:
         add(-1, -1, f"Simulasi: peluang turun >20% dalam 12 bln {mc['p_loss20'] * 100:.0f}%")

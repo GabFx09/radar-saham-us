@@ -193,6 +193,7 @@ const CMP_ROWS = [
   ['Pertumbuhan', (s) => s.pillars.growth, (s) => Math.round(s.pillars.growth), 'hi'],
   ['Kesehatan', (s) => s.pillars.health, (s) => Math.round(s.pillars.health), 'hi'],
   ['Teknikal', (s) => s.tech, (s) => Math.round(s.tech), 'hi'],
+  ['Aliran dana', (s) => s.flow, (s) => (s.flow == null ? '–' : Math.round(s.flow)), 'hi'],
   ['Ketahanan geopolitik', (s) => s.geo?.score, (s) => (s.geo ? Math.round(s.geo.score) : '–'), 'hi'],
   ['Valuasi & bisnis'],
   ['P/E forward', (s) => (s.m.pe_fwd > 0 ? s.m.pe_fwd : null), (s) => fmt.x(s.m.pe_fwd), 'lo'],

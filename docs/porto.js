@@ -51,6 +51,8 @@ function advise(h, s, closes, weight) {
   }
   if (s.tech != null && s.tech < 30) add(-1, -1, `Tren teknikal lemah (skor teknikal ${Math.round(s.tech)})`);
   else if (s.tech != null && s.tech >= 70) add(0.5, 1, `Tren teknikal kuat (${Math.round(s.tech)})`);
+  if (s.flow != null && s.flow <= 30) add(-1, -1, `Uang keluar: aliran dana ${Math.round(s.flow)}/100 — tekanan jual dominan`);
+  else if (s.flow != null && s.flow >= 70) add(0.5, 1, `Uang masuk: aliran dana ${Math.round(s.flow)}/100 — akumulasi`);
   const mc = q.mc || {};
   if ((mc.p_loss20 || 0) >= 0.35) add(-1, -1, `Simulasi: peluang turun >20% dalam 12 bln ${Math.round(mc.p_loss20 * 100)}%`);
   let act;

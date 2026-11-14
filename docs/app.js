@@ -103,6 +103,8 @@ const PRESETS = [
   { id: 'prob', name: '🎲 Peluang Tinggi', desc: 'Simulasi Monte Carlo: peluang untung ≥ 60%, risiko turun >20% ≤ 20%, fundamental ≥ 60.', f: (s) => s.q && s.q.mc && s.q.mc.p_up >= 0.6 && s.q.mc.p_loss20 <= 0.2 && s.fund >= 60, sort: 'prob' },
   { id: 'lowvol', name: '🧘 Stabil & Berkualitas', desc: 'Volatilitas rendah (persentil ≥ 70), kualitas ≥ 60, rekomendasi Buy/Strong Buy.', f: (s) => s.factors && s.factors.lowvol >= 70 && s.pillars.quality >= 60 && (s.rating === 'BUY' || s.rating === 'STRONG BUY'), sort: 'score' },
   { id: 'upgrade', name: '▲ Baru Naik Peringkat', desc: 'Saham yang rekomendasinya naik sejak update sebelumnya.', f: (s) => s.prev && ratingOrder[s.rating] > ratingOrder[s.prev.rating], sort: 'score' },
+  { id: 'akumulasi', name: '💰 Akumulasi (Uang Masuk)', desc: 'Skor aliran dana ≥ 65 dan fundamental ≥ 60 — volume beli dominan, institusi/short mendukung.', f: (s) => (s.flow ?? 0) >= 65 && s.fund >= 60, sort: 'flow' },
+  { id: 'distribusi', name: '🚪 Distribusi (Uang Keluar)', desc: 'Skor aliran dana ≤ 35 — tekanan jual dominan. Waspadai bila Anda memilikinya.', f: (s) => s.flow != null && s.flow <= 35, sort: 'flowlow' },
   { id: 'geo_win', name: '🌍 Diuntungkan Geopolitik', desc: 'Peluang geopolitik ≥ 30 (pertahanan, energi, reshoring, keamanan siber, emas) dengan fundamental ≥ 55.', f: (s) => s.geo && s.geo.opp >= 30 && s.fund >= 55, sort: 'geo' },
 ];
 
@@ -119,6 +121,8 @@ const SORTS = {
   mcap: ['Kapitalisasi pasar', (s) => s.mcap ?? 0],
   chg: ['Perubahan harian', (s) => s.chg1d ?? 0],
   geo: ['Ketahanan geopolitik', (s) => (s.geo ? s.geo.score : 0)],
+  flow: ['Aliran dana (uang masuk)', (s) => s.flow ?? -1],
+  flowlow: ['Aliran dana (uang keluar)', (s) => (s.flow == null ? -999 : -s.flow)],
   prob: ['Peluang untung (simulasi)', (s) => (s.q && s.q.mc ? s.q.mc.p_up : 0)],
   sharpe: ['Sharpe 1 tahun', (s) => (s.q && s.q.sharpe != null ? s.q.sharpe : -9)],
   lowvol: ['Volatilitas terendah', (s) => (s.q && s.q.vol != null ? -s.q.vol : -9)],
@@ -683,7 +687,7 @@ function renderDetail(el, sym) {
     </div>
     <div class="detail-grid" style="margin-top:16px">
       <div class="dcol">${projHtml}${prosHtml}${consHtml}${geoCard(s)}${chartHtml}${metricsHtml}${histHtml}${qtrCard(s, 10)}${insiderCard(s, 10)}</div>
-      <div class="dcol">${scoreHtml}${valHtml}${ownValCard(s, 6)}${estCard(s, 6)}${mcCard(s, 6)}${planHtml}${techHtml}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
+      <div class="dcol">${scoreHtml}${valHtml}${ownValCard(s, 6)}${estCard(s, 6)}${mcCard(s, 6)}${planHtml}${techHtml}${flowCard(s, 8)}${factorCard(s, 8)}${pioHtml}${aboutHtml}</div>
     </div>
     <p class="disclaimer">Analisis otomatis berbasis data Yahoo Finance; bukan rekomendasi investasi personal. Proyeksi adalah estimasi model dan bisa meleset.</p>
   </div>`;
@@ -921,6 +925,9 @@ function renderMethod(el) {
     <p><b>Valuasi vs riwayat sendiri</b> — P/E dan P/S tiap akhir tahun fiskal (≤4 tahun, dari laporan keuangan + harga bulanan) dibanding nilai sekarang. Premi/diskon P/E terhadap median sendiri menjadi salah satu metrik pilar Valuasi.</p>
     <p><b>Uji sinyal</b> — setiap hari nilai faktor semua saham disimpan, lalu dihitung <i>Information Coefficient</i> (korelasi peringkat Spearman) terhadap return 1 minggu, 1 bulan, dan 3 bulan sesudahnya.</p>
     <p><b>Universe</b> — S&amp;P 500 + S&amp;P MidCap 400 (dari Wikipedia) + beberapa saham growth populer.</p>
+
+    <h2>Aliran Dana (Money Flow)</h2>
+    <p>Skor 0–100 dari: <b>Chaikin Money Flow</b> 20 hari (30%), tren <b>On-Balance Volume</b> &amp; divergensinya terhadap harga (15%), <b>Money Flow Index</b> 14 hari (15%), rasio volume hari naik vs turun (15%), lonjakan volume relatif disertai arah harga (10%), perubahan kepemilikan <b>10 institusi terbesar</b> dari laporan 13F (10%), dan perubahan <b>short interest</b> bulanan (5%). Perkiraan "uang masuk/keluar" = Σ posisi penutupan dalam rentang harian × volume × harga tipikal — ukuran tekanan beli/jual, bukan data transaksi per pembeli. Skor aliran dana menyumbang 30% komponen teknikal.</p>
 
     <h2>Kualitas Laba &amp; Dilusi</h2>
     <p><b>Akrual</b> = (laba bersih − arus kas operasi) ÷ total aset. Laba yang jauh di atas arus kas sering bersifat sementara (riset Sloan, 1996), sehingga akrual tinggi menurunkan pilar Kualitas. <b>Perubahan jumlah saham</b> setahun: penerbitan saham baru (dilusi) menurunkan pilar Kesehatan, buyback menaikkannya.</p>

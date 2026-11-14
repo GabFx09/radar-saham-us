@@ -320,6 +320,10 @@ def fetch_estimates(sym):
                 ins = insider_summary(t)
                 if ins:
                     out["ins"] = ins
+                import aliran
+                inst = aliran.inst_summary(t)
+                if inst:
+                    out["inst"] = inst
             except Exception:  # noqa: BLE001
                 pass
             if tr is not None and len(tr):

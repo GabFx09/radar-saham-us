@@ -251,6 +251,7 @@ const HM_METRICS = {
   up: ['Proyeksi naik', (s) => (s.val ? s.val.upside : null), 0.4, (v) => fmt.pct(v, 0)],
   score: ['Skor', (s) => (s.score - 55) / 100, 0.2, (v) => Math.round(v * 100 + 55)],
   prob: ['Peluang untung', (s) => (s.q && s.q.mc ? s.q.mc.p_up - 0.5 : null), 0.2, (v) => Math.round((v + 0.5) * 100) + '%'],
+  flow: ['Aliran dana', (s) => (s.flow == null ? null : (s.flow - 50) / 100), 0.3, (v) => Math.round(v * 100 + 50)],
 };
 function hmColor(v, rng) {
   if (v == null || !isFinite(v)) return '#3a3a3a';

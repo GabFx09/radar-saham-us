@@ -36,6 +36,7 @@ import geopolitik  # noqa: E402
 import quant  # noqa: E402
 import siklus  # noqa: E402
 import makro  # noqa: E402
+import aliran  # noqa: E402
 import zlib  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1195,6 +1196,33 @@ def build_reasons(rec, medians):
         C(60, f"Payout ratio {pct(f['payout'])} — dividen melebihi laba, keberlanjutan perlu dicermati.",
           "Pemegang Saham")
 
+    fl, sh_, ist = rec.get("flraw"), rec.get("short"), rec.get("inst")
+    if fl and rec.get("flow") is not None:
+        net = fl.get("net20") or 0
+        if rec["flow"] >= 68 and net > 0:
+            P(52 + (rec["flow"] - 68) * 0.8, f"Uang masuk: tekanan beli bersih ±{money(net)} dalam 20 hari (CMF {fl['cmf']:+.2f}, volume hari naik "
+                                            f"{fl['ud']:.1f}× hari turun).", "Aliran Dana")
+        elif rec["flow"] <= 32 and net < 0:
+            C(52 + (32 - rec["flow"]) * 0.8, f"Uang keluar: tekanan jual bersih ±{money(-net)} dalam 20 hari (CMF {fl['cmf']:+.2f}"
+                                            + (f", volume hari turun {1 / fl['ud']:.1f}× hari naik" if fl.get('ud') else "") + ").", "Aliran Dana")
+        if fl.get("div") == "akumulasi":
+            P(56, "Akumulasi tersembunyi: volume beli (OBV) naik walau harga turun 20 hari terakhir.", "Aliran Dana")
+        elif fl.get("div") == "distribusi":
+            C(56, "Distribusi: harga naik tapi volume (OBV) turun — kenaikan tidak didukung pembeli besar.", "Aliran Dana")
+        if (fl.get("rv") or 0) >= 2 and (fl.get("chg5") or 0) > 0.03:
+            P(50, f"Lonjakan volume {fl['rv']:.1f}× rata-rata disertai kenaikan harga {pct(fl['chg5'])} (5 hari).", "Aliran Dana")
+    if ist and ist.get("net_pct") is not None:
+        if ist["net_pct"] >= 0.02 and ist["n_up"] >= 6:
+            P(50, f"{ist['n_up']} dari 10 institusi terbesar menambah kepemilikan (bersih {pct(ist['net_pct'])}"
+                  + (f", ±{money(ist['net_usd'])}" if ist.get('net_usd') else "") + ").", "Institusi")
+        elif ist["net_pct"] <= -0.02 and ist["n_dn"] >= 6:
+            C(50, f"{ist['n_dn']} dari 10 institusi terbesar mengurangi kepemilikan (bersih {pct(ist['net_pct'])}).", "Institusi")
+    if sh_ and sh_.get("chg") is not None:
+        if sh_["chg"] >= 0.30 and (sh_.get("pct_float") or 0) >= 0.02:
+            C(48 + min(sh_["chg"], 2) * 10, f"Short interest naik {pct(sh_['chg'])} dalam sebulan ({pct(sh_.get('pct_float'), 1)} dari float) "
+                                           "— taruhan harga turun bertambah.", "Short Interest")
+        elif sh_["chg"] <= -0.25 and (sh_.get("pct_float") or 0) >= 0.03:
+            P(48, f"Short interest turun {pct(-sh_['chg'])} sebulan — posisi short ditutup (short covering).", "Short Interest")
     ff = rec["f"]
     acc, shc = ff.get("accruals"), ff.get("share_chg")
     if acc is not None:
@@ -1443,6 +1471,7 @@ def main():
                 "earnings_est": bool(info.get("isEarningsDateEstimate")),
                 "earnings_last": info.get("earningsTimestamp"),
                 "f": f, "t": t,
+                "flraw": aliran.from_prices(prices[s]), "short": aliran.short_info(info),
             })
         except Exception as e:
             log(f"  error {s}: {e}")
@@ -1491,6 +1520,13 @@ def main():
         rec["rev"] = makro.revision_score(rec["est"])
         ins = (rec["est"] or {}).get("ins")
         rec["ins_score"] = makro.insider_score(ins, rec.get("mcap"))
+        inst = (rec["est"] or {}).get("inst")
+        if inst and inst.get("net_sh") is not None:
+            inst["net_usd"] = round(inst["net_sh"] * rec["t"]["price"])
+        rec["inst"] = inst
+        rec["flow"] = aliran.score(rec.get("flraw"), inst, rec.get("short"))
+        # komponen teknikal = 70% teknikal harga + 30% aliran dana
+        rec["tech_comp"] = round(0.7 * rec["tech"] + 0.3 * rec["flow"], 1) if rec["flow"] is not None else rec["tech"]
         parts = [(rec["analyst"], 0.5)]
         if rec["rev"] is not None:
             parts.append((rec["rev"], 0.3))
@@ -1527,7 +1563,7 @@ def main():
             log(f"  ipo gagal: {e}")
     for rec in records:
         rec["geo_int"] = geo_int
-        rec["score"] = round(0.65 * rec["fund"] + 0.20 * rec["tech"] + 0.10 * rec["analyst"]
+        rec["score"] = round(0.65 * rec["fund"] + 0.20 * rec.get("tech_comp", rec["tech"]) + 0.10 * rec["analyst"]
                              + 0.05 * rec["geo"]["score"], 1)
 
     for rec in records:
@@ -1611,6 +1647,8 @@ def main():
             "pros": rec["pros"], "cons": rec["cons"], "thesis": rec["thesis"], "plan": rec["plan"],
             "geo": rec["geo"], "country": rec["country"],
             "factors": rec.get("factors"),
+            "flow": rec.get("flow"),
+            "fl": None if not rec.get("flraw") else {**rec["flraw"], "inst": rec.get("inst"), "short": rec.get("short")},
             "est": rec.get("est"), "rev": rec.get("rev"),
             "qtr": rec["f"].get("qtr"), "fcf_src": rec["f"].get("fcf_src"),
             "q": None if not rec.get("q_risk") else {
@@ -1713,7 +1751,7 @@ def main():
     # ---- pecah: stocks.json ringkas untuk daftar/screener, detail/{SYM}.json untuk halaman saham
     detail_dir = os.path.join(OUT_DIR, "detail")
     os.makedirs(detail_dir, exist_ok=True)
-    heavy = {"pros", "cons", "thesis", "summary", "website", "hist", "piotroski_checks", "mp", "tech_d", "plan",
+    heavy = {"fl", "pros", "cons", "thesis", "summary", "website", "hist", "piotroski_checks", "mp", "tech_d", "plan",
              "est", "earnings_last", "country", "qtr", "fcf_src"}
     m_list = ["pe_fwd", "peg", "roe", "roic", "rev_cagr3", "rev_growth", "eps_growth_fwd", "piotroski", "div_yield",
               "payout", "fcf_yield", "op_margin", "de", "beta"]
