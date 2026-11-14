@@ -92,7 +92,7 @@ function holdingRows() {
 }
 function renderPorto(el) {
   const rows = holdingRows();
-  const missing = rows.filter((r) => !App.histCache[r.s.sym]).map((r) => r.s.sym);
+  const missing = rows.filter((r) => !App.histCache[r.s.sym]).map((r) => r.s.sym).concat(rows.length && !App.histCache.SPY ? ['SPY'] : []);
   if (missing.length && !renderPorto._loading) {
     renderPorto._loading = true;
     Promise.all(missing.map((x) => loadHist(x).catch(() => null))).then(() => { renderPorto._loading = false; if (parseHash().parts[0] === 'portofolio') renderPorto(el); });
@@ -126,7 +126,7 @@ function renderPorto(el) {
       <div><div class="l">Nilai pasar</div><div class="v">${fmt.usd(tot.val, 0)}</div><div class="s">${idr ? 'Rp ' + Math.round(tot.val * idr).toLocaleString('id-ID') : ''}</div></div>
       <div><div class="l">Hari ini</div><div class="v ${cls(tot.day)}">${tot.day >= 0 ? '+' : '−'}${fmt.usd(Math.abs(tot.day), 0)}</div><div class="s">${fmt.pct(tot.val ? tot.day / (tot.val - tot.day) : null, 2)}</div></div>
       <div><div class="l">Untung/rugi total</div><div class="v ${cls(plTot)}">${plTot == null ? '–' : (plTot >= 0 ? '+' : '−') + fmt.usd(Math.abs(plTot), 0)}</div><div class="s">${plTot == null ? 'isi harga beli' : fmt.pct(plTot / tot.basis, 1)}</div></div>
-      <div><div class="l">Dividen / tahun</div><div class="v">${fmt.usd(divInc, 0)}</div><div class="s">yield ${fmt.pct(tot.val ? divInc / tot.val : null, 2, false)}</div></div>
+      <div><div class="l">Dividen / tahun</div><div class="v">${fmt.usd(divInc, 0)}</div><div class="s">yield ${fmt.pct(tot.val ? divInc / tot.val : null, 2, false)}${divInc ? ` · bersih ${fmt.usd(divInc * (1 - brokerCfg().tax), 0)} stl pajak ${Math.round(brokerCfg().tax * 100)}%` : ''}</div></div>
     </div>` : ''}
     <div class="card card-pad">
       <h3 class="card-title">Kepemilikan (${rows.length})</h3>
@@ -148,6 +148,7 @@ function renderPorto(el) {
       <datalist id="pSyms">${App.data.stocks.map((s) => `<option value="${esc(s.sym)}">${esc(s.name)}</option>`).join('')}</datalist>
     </div>
     ${profileCard()}
+    ${dcaCard(rows, tot.val)}
     ${rows.length ? `<div class="card card-pad" style="margin-top:12px">
       <div class="section-head" style="margin-bottom:8px;align-items:center"><h3 class="card-title" style="margin:0">Penasihat Portofolio</h3><button class="btn" id="pCopy">Salin untuk analisis</button></div>
       <p class="small muted" style="margin:0 0 10px">Saran dari data aplikasi: rekomendasi &amp; nilai wajar model, perubahan fundamental sejak dibeli, trailing stop berbasis volatilitas, risiko simulasi, dan bobot portofolio. Diperbarui setiap update data harian.</p>
@@ -157,6 +158,7 @@ function renderPorto(el) {
       <p class="small faint" style="margin:8px 0 0">Bukan perintah jual-beli. Model tidak tahu tujuan, pajak, dan jangka waktu Anda — gunakan sebagai pemeriksaan kedua.</p>
     </div>
     ${rebalanceCard(rows)}
+    ${benchCard(rows)}
     ${rows.length ? idrCard(tot.val, expRet, idr) : ''}
     <div class="grid-2" style="margin-top:12px">
       <div class="card card-pad"><h3 class="card-title">Alokasi Sektor</h3>
@@ -197,6 +199,7 @@ function renderPorto(el) {
   $$('[data-edit]').forEach((b) => { b.onclick = () => editHolding(b.dataset.edit, el); });
   bindRebalance(rows, el);
   bindProfile(el);
+  bindDca(rows, el);
   const cp = $('#pCopy');
   if (cp) cp.onclick = async () => {
     const txt = [`Portofolio saya (data Radar Saham per ${App.data.generated.slice(0, 10)}):`].concat(rows.map((r) =>

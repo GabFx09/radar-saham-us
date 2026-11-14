@@ -363,7 +363,7 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
     } catch (e) { out.textContent = 'Gagal: ' + e.message; }
   };
   const saveN = () => {
-    App.notify = { profile: App.notify.profile || 'seimbang', daily: $('#nDaily').checked, intraday: $('#nIntra').checked, auto_plan: $('#nAuto').checked, flow: $('#nFlow').checked, flow_market: $('#nFlowMkt').checked,
+    App.notify = { ...App.notify, profile: App.notify.profile || 'seimbang', daily: $('#nDaily').checked, intraday: $('#nIntra').checked, auto_plan: $('#nAuto').checked, flow: $('#nFlow').checked, flow_market: $('#nFlowMkt').checked,
       move_pct: clamp(parseFloat($('#nMove').value) || 5, 1, 30), news: $('#nNews').checked,
       news_market: $('#nNewsMkt').checked, news_level: $('#nNewsLvl').value };
     store.set('notify', App.notify);

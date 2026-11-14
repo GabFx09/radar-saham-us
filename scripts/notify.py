@@ -529,6 +529,10 @@ def digest():
             deliver("advice", f"💼 {sym}: saran {a['act']}", [f"{'−' if r['s'] < 0 else '+' if r['s'] > 0 else '·'} {esc(r['t'])}" for r in a["reasons"]],
                     f"{SITE}#/portofolio", sym, prio="tinggi" if a["act"] == "JUAL" else "normal")
     state["adv"] = {k: v["act"] for k, v in (CTX.get("advice") or {}).items()}
+    try:
+        dca_reminder(st, state, rows.get("IDR=X", {}).get("last"))
+    except Exception as e:  # noqa: BLE001
+        log(f"Pengingat DCA gagal: {e}")
     if tgl.weekday() == 0 and mine:  # Senin: laporan mingguan bergrafik
         try:
             png = weekly_chart(mine, by, mk)
@@ -538,6 +542,28 @@ def digest():
             log(f"Grafik mingguan gagal: {e}")
     flush()
     log("Ringkasan terkirim." if TOKEN else "")
+
+
+# ----------------------------------------------------------------------------- pengingat DCA bulanan
+def dca_reminder(st, state, idr):
+    """Sekali per bulan, pada/sesudah tanggal DCA pilihan user: ingatkan menabung saham rutin."""
+    dca = st.get("dca") or {}
+    amt = float(dca.get("amt") or 0)
+    if not dca.get("on") or amt <= 0:
+        return
+    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=7)))
+    month = now.strftime("%Y-%m")
+    if now.day < int(dca.get("day") or 1) or state.get("dca_sent") == month:
+        return
+    state["dca_sent"] = month
+    br = st.get("broker") or {}
+    fx_cost = float(br.get("fx", 0.005)) + float(br.get("fee", 0.003))
+    lines = [f"Jadwal menabung saham bulan ini: <b>Rp {amt:,.0f}</b>".replace(",", ".")]
+    if idr:
+        lines.append(f"≈ ${amt / idr * (1 - fx_cost):,.0f} setelah perkiraan biaya kurs &amp; transaksi (kurs {idr:,.0f}).".replace(",", "."))
+    lines.extend(world_line())
+    lines.append("Buka Radar → Portofolio → <b>Rencana DCA Bulanan</b> untuk daftar saham &amp; nominal beli per saham, lalu catat pembeliannya.")
+    deliver("dca", "🗓️ Waktunya DCA bulan ini", lines, f"{SITE}#/portofolio", prio="normal")
 
 
 # ----------------------------------------------------------------------------- dana masuk/keluar besar

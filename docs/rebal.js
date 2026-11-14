@@ -207,7 +207,15 @@ function computeRebalance(rows, opt) {
     return { beta, exp, score, secs, maxw };
   };
   const why = whyNotPicked(sel, N, opt);
-  return { V, cur, N, maxW, plan, why, eq, T, cashT: V * (1 - eq), before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
+  // biaya broker & untung yang direalisasi dari penjualan
+  const B = typeof brokerCfg === 'function' ? brokerCfg() : { n: 'broker', fee: 0, fx: 0 };
+  const act = plan.filter((p) => p.act !== 'Biarkan');
+  const traded = act.reduce((a, p) => a + Math.abs(p.dv), 0);
+  const fees = traded * B.fee + (Number(opt.cash) || 0) * B.fx;
+  const sells = act.filter((p) => p.held && p.dv < 0);
+  const realized = sells.reduce((a, p) => a + (p.held.cost ? Math.min(Math.abs(p.sh), p.held.qty) * (p.s.price - p.held.cost) : 0), 0);
+  const cost = { B, traded, fees, realized, nTrades: act.length, sellAmt: sells.reduce((a, p) => a + Math.abs(p.dv), 0) };
+  return { V, cur, N, maxW, plan, why, eq, T, cost, cashT: V * (1 - eq), before: stat(plan.filter((p) => p.held), (p) => p.cv), after: stat(plan, (p) => p.tv) };
 }
 
 function rebalanceCard(rows) {
@@ -239,6 +247,7 @@ function rebalanceCard(rows) {
       ${cmp('Return harapan 12 bln', R.before.exp, R.after.exp, (x) => fmt.pct(x, 1), (a, b) => b > a)}
       <div><div class="l">Nilai dialokasikan</div><div class="v">${fmt.usd(R.V, 0)}</div><div class="s">${o.cash ? 'termasuk dana tambahan' : 'tanpa dana tambahan'}</div></div>
     </div>
+    ${R.cost.nTrades ? `<p class="small" style="margin:0 0 8px">💸 Perkiraan biaya ${esc(R.cost.B.n)}: <b>${fmt.usd(R.cost.fees, 2)}</b> (${R.cost.nTrades} transaksi senilai ${fmt.usd(R.cost.traded, 0)} × ${(R.cost.B.fee * 100).toLocaleString('id-ID')}%${o.cash ? ` + kurs ${(R.cost.B.fx * 100).toLocaleString('id-ID')}% untuk dana tambahan` : ''})${R.cost.realized > 1 ? ` · penjualan merealisasi untung ±<b>${fmt.usd(R.cost.realized, 0)}</b> (catat untuk SPT Tahunan)` : ''}.${R.cost.sellAmt > 0 ? ` Ingin tanpa menjual? <a class="link" href="#dcaCard" onclick="document.getElementById('dcaCard').scrollIntoView({behavior:'smooth'});return false">Rencana DCA</a> menyeimbangkan pelan-pelan lewat pembelian baru.` : ''}</p>` : ''}
     <div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th>Aksi</th><th class="r">Sekarang</th><th class="r">Target</th><th class="r">Selisih</th><th class="r">Lembar</th></tr>
       ${R.plan.map((p) => `<tr class="${p.act === 'Biarkan' ? 'faint' : ''}"><td><a href="#/s/${encodeURIComponent(p.s.sym)}"><b>${esc(p.s.sym)}</b></a> ${ratingBadge(p.s.rating)}<div class="faint small">${esc(p.s.sector)} · ${fmt.usd(p.s.price)} · potensi ${fmt.pct(p.s.val ? p.s.val.upside : null, 0)}${p.st && p.st.k !== 'hold' ? ` · 🌍 ${STANCE[p.st.k].n}` : ''}</div></td>
@@ -249,7 +258,7 @@ function rebalanceCard(rows) {
     ${R.why.length ? `<details class="reb-why" open style="margin-top:10px"><summary class="small"><b>Kenapa berbeda dengan Pilihan Teratas di Beranda?</b> (${R.why.length} saham tidak dipilih)</summary>
       <p class="small muted" style="margin:6px 0">Beranda mengurutkan skor tertinggi saja. Rebalancing memilih yang paling cocok <i>untuk portofolio Anda</i>: membuang keyakinan nilai wajar rendah, memperhitungkan risiko turun, dan mendahulukan sektor baru.</p>
       <ul class="small" style="margin:0;padding-left:18px">${R.why.map((x) => `<li><a href="#/s/${encodeURIComponent(x.s.sym)}"><b>${esc(x.s.sym)}</b></a> ${ratingBadge(x.s.rating)} <span class="faint">skor ${Math.round(x.s.score)}</span> — ${esc(x.t)}</li>`).join('')}</ul></details>` : ''}
-    <p class="small faint" style="margin:8px 0 0">Jalankan bertahap (mis. 2–3 kali dalam 1–2 minggu) dan perhitungkan biaya broker &amp; pajak. Setelah transaksi, perbarui jumlah lembar di tabel Kepemilikan agar saran berikutnya akurat. Bukan nasihat keuangan pribadi.</p>
+    <p class="small faint" style="margin:8px 0 0">Jalankan bertahap (mis. 2–3 kali dalam 1–2 minggu); biaya di atas memakai pengaturan broker di kartu Rencana DCA. Setelah transaksi, perbarui jumlah lembar di tabel Kepemilikan agar saran berikutnya akurat. Bukan nasihat keuangan pribadi.</p>
   </div>`;
 }
 function bindRebalance(rows, el) {

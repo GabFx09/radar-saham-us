@@ -1819,8 +1819,14 @@ def main():
         with open(os.path.join(HIST_DIR, f"{rec['sym']}.json"), "w", encoding="utf-8") as fh:
             json.dump(hist, fh, separators=(",", ":"))
 
+    # tolok ukur S&P 500 (SPY) untuk perbandingan portofolio
+    if spy is not None:
+        c = spy["Close"].astype(float).dropna()
+        with open(os.path.join(HIST_DIR, "SPY.json"), "w", encoding="utf-8") as fh:
+            json.dump({"d": [ix.strftime("%Y-%m-%d") for ix in c.index], "c": [round(float(x), 2) for x in c.values]}, fh, separators=(",", ":"))
+
     if not args.tickers:
-        keep = {rec["sym"] for rec in records}
+        keep = {rec["sym"] for rec in records} | {"SPY"}
         for fn in os.listdir(HIST_DIR):
             if fn.endswith(".json") and fn[:-5] not in keep:
                 os.remove(os.path.join(HIST_DIR, fn))

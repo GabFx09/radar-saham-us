@@ -61,6 +61,7 @@ Data diperbarui otomatis Senin–Jumat sekitar pukul 05.30 WIB. Untuk update man
   kovarians shrinkage + backtest; rekam jejak harian rekomendasi vs S&P 500 (`docs/data/track.json`).
 
 - Waktu masuk (`docs/dunia.js`): skor gabungan sinyal Radar + [Prakiraan Dunia](https://gabfx09.github.io/prakiraan-dunia/)
+- Rencana DCA bulanan, biaya broker (bawaan Pluang), dan perbandingan portofolio vs S&P 500 (`docs/dca.js`); pengingat DCA bulanan lewat Kabar
   (rezim, risiko, matriks aset, siklus, skenario) → Agresif/Bertahap/Hati-hati/Tahan kas; sikap makro per sektor,
   rentang harga dikalibrasi dari backtest Prakiraan, proyeksi portofolio dalam rupiah. Data Prakiraan hanya dibaca.
 
