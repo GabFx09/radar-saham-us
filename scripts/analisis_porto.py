@@ -66,7 +66,8 @@ def main():
         except Exception:  # noqa: BLE001
             pass
         v = float(h.get("qty") or 0) * s["price"]
-        adv = penasihat.advise(h, s, penasihat.closes_since(hist, h.get("date")), v / tot if tot else 0)
+        adv = penasihat.advise(h, s, penasihat.closes_since(hist, h.get("date")), v / tot if tot else 0,
+                               profile=(cfg.get("settings") or {}).get("profile"))
         rows.append({"sym": h["sym"], "name": s["name"], "qty": h.get("qty"), "cost": h.get("cost"), "date": h.get("date"),
                      "price": s["price"], "value": round(v, 2), "weight": round(v / tot, 4) if tot else None,
                      "rating": s["rating"], "score": s["score"], "fund": s["fund"], "tech": s["tech"],

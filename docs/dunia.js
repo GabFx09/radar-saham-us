@@ -93,7 +93,7 @@ function timing() {
   const tw = P.reduce((a, p) => a + p.w, 0) || 1;
   const score = P.reduce((a, p) => a + p.score * p.w, 0) / tw;
   const label = score >= 62 ? 'Agresif' : score >= 50 ? 'Bertahap' : score >= 38 ? 'Hati-hati' : 'Tahan kas';
-  const equity = { Agresif: 0.95, Bertahap: 0.75, 'Hati-hati': 0.55, 'Tahan kas': 0.35 }[label];
+  const equity = clamp({ Agresif: 0.95, Bertahap: 0.75, 'Hati-hati': 0.55, 'Tahan kas': 0.35 }[label] + (typeof prof === 'function' ? prof().eqAdj : 0), 0.2, 1);
   const now = { Agresif: '60–80%', Bertahap: '30–40%', 'Hati-hati': '15–25%', 'Tahan kas': '≤10%' }[label];
   return { score, label, parts: P, equity, now, coverage: P.filter((p) => p.src === 'Prakiraan').length ? 'Radar + Prakiraan' : 'Radar saja' };
 }

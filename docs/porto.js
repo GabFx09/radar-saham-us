@@ -34,7 +34,8 @@ function advise(h, s, closes, weight) {
   }
   if (buy.rating && rt && (RANKV[rt] ?? 1) < (RANKV[buy.rating] ?? 1)) add(-1, -1, `Rekomendasi turun sejak dibeli (${buy.rating} → ${rt})`);
   const pl = cost ? price / cost - 1 : null;
-  const trail = Math.max(0.10, Math.min(0.30, vol * 0.45));
+  const PF = typeof prof === 'function' ? prof() : { trail: [0.45, 0.10, 0.30], maxW: 0.25, addW: 0.20 };
+  const trail = Math.max(PF.trail[1], Math.min(PF.trail[2], vol * PF.trail[0]));
   let dd = null;
   if (closes && closes.length) {
     const peak = Math.max(...closes, price);
@@ -63,8 +64,8 @@ function advise(h, s, closes, weight) {
   else if (pts >= 0) act = 'TAHAN';
   else if (pts >= -2) act = 'KURANGI';
   else act = 'JUAL';
-  if (weight > 0.25 && (act === 'TAMBAH' || act === 'TAHAN')) { act = 'KURANGI'; R.push({ s: -1, t: `Bobot ${Math.round(weight * 100)}% dari portofolio — kurangi sebagian untuk diversifikasi (saran ≤ 20–25%)` }); }
-  else if (weight > 0.20 && act === 'TAMBAH') { act = 'TAHAN'; R.push({ s: 0, t: `Bobot sudah ${Math.round(weight * 100)}% — jangan ditambah lagi` }); }
+  if (weight > PF.maxW && (act === 'TAMBAH' || act === 'TAHAN')) { act = 'KURANGI'; R.push({ s: -1, t: `Bobot ${Math.round(weight * 100)}% dari portofolio — kurangi sebagian untuk diversifikasi (saran ≤ ${Math.round(PF.maxW * 100)}%)` }); }
+  else if (weight > PF.addW && act === 'TAMBAH') { act = 'TAHAN'; R.push({ s: 0, t: `Bobot sudah ${Math.round(weight * 100)}% — jangan ditambah lagi` }); }
   const e = s.earnings_ts;
   if (e && e * 1000 > Date.now() - 864e5 && e * 1000 < Date.now() + 3 * 864e5) R.push({ s: 0, t: 'Laporan keuangan dalam 3 hari — harga bisa bergerak tajam' });
   return { act, pts, reasons: R, trail, dd, pl };
@@ -109,7 +110,7 @@ function renderPorto(el) {
   const divInc = rows.reduce((a, r) => a + r.qty * (r.s.div_rate || 0), 0);
   const expRet = rows.reduce((a, r) => a + w(r) * ((r.s.q && r.s.q.mc && r.s.q.mc.exp) ?? 0), 0);
   const warns = [];
-  rows.forEach((r) => { if (w(r) > 0.25) warns.push(`<b>${esc(r.s.sym)}</b> ${Math.round(w(r) * 100)}% dari portofolio — terlalu terkonsentrasi (saran ≤ 20–25%).`); });
+  rows.forEach((r) => { if (w(r) > prof().maxW) warns.push(`<b>${esc(r.s.sym)}</b> ${Math.round(w(r) * 100)}% dari portofolio — terlalu terkonsentrasi (saran ≤ ${Math.round(prof().maxW * 100)}% untuk profil ${prof().n}).`); });
   secArr.forEach(([k, v]) => { if (v > 0.4) warns.push(`Sektor <b>${esc(k)}</b> ${Math.round(v * 100)}% — diversifikasi lemah.`); });
   rows.forEach((r) => { if (r.s.rating === 'HINDARI') warns.push(`<b>${esc(r.s.sym)}</b> kini berperingkat HINDARI (skor ${Math.round(r.s.score)}) — tinjau ulang alasan memegangnya.`); });
   rows.forEach((r) => { if (r.s.val && r.s.val.upside < -0.15) warns.push(`<b>${esc(r.s.sym)}</b> ${fmt.pct(-r.s.val.upside, 0)} di atas nilai wajar model.`); });
@@ -146,6 +147,7 @@ function renderPorto(el) {
       </form>
       <datalist id="pSyms">${App.data.stocks.map((s) => `<option value="${esc(s.sym)}">${esc(s.name)}</option>`).join('')}</datalist>
     </div>
+    ${profileCard()}
     ${rows.length ? `<div class="card card-pad" style="margin-top:12px">
       <div class="section-head" style="margin-bottom:8px;align-items:center"><h3 class="card-title" style="margin:0">Penasihat Portofolio</h3><button class="btn" id="pCopy">Salin untuk analisis</button></div>
       <p class="small muted" style="margin:0 0 10px">Saran dari data aplikasi: rekomendasi &amp; nilai wajar model, perubahan fundamental sejak dibeli, trailing stop berbasis volatilitas, risiko simulasi, dan bobot portofolio. Diperbarui setiap update data harian.</p>
@@ -194,6 +196,7 @@ function renderPorto(el) {
   };
   $$('[data-edit]').forEach((b) => { b.onclick = () => editHolding(b.dataset.edit, el); });
   bindRebalance(rows, el);
+  bindProfile(el);
   const cp = $('#pCopy');
   if (cp) cp.onclick = async () => {
     const txt = [`Portofolio saya (data Radar Saham per ${App.data.generated.slice(0, 10)}):`].concat(rows.map((r) =>

@@ -73,7 +73,7 @@ function qtrCard(s, order = 10) {
 
 /* ------------------------------------------------------------ 2. sinkronisasi cloud (GitHub Gist) */
 const CLOUD_FILE = 'radar-saham.json';
-const NOTIFY_DEFAULT = { daily: true, intraday: true, flow: true, flow_market: true, move_pct: 5, auto_plan: true, news: true, news_market: true, news_level: 'tinggi' };
+const NOTIFY_DEFAULT = { profile: 'seimbang', daily: true, intraday: true, flow: true, flow_market: true, move_pct: 5, auto_plan: true, news: true, news_market: true, news_level: 'tinggi' };
 App.cloud = store.get('cloud', null);
 App.alerts = store.get('alerts', {});
 App.notify = Object.assign({}, NOTIFY_DEFAULT, store.get('notify', {}));
@@ -363,7 +363,7 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
     } catch (e) { out.textContent = 'Gagal: ' + e.message; }
   };
   const saveN = () => {
-    App.notify = { daily: $('#nDaily').checked, intraday: $('#nIntra').checked, auto_plan: $('#nAuto').checked, flow: $('#nFlow').checked, flow_market: $('#nFlowMkt').checked,
+    App.notify = { profile: App.notify.profile || 'seimbang', daily: $('#nDaily').checked, intraday: $('#nIntra').checked, auto_plan: $('#nAuto').checked, flow: $('#nFlow').checked, flow_market: $('#nFlowMkt').checked,
       move_pct: clamp(parseFloat($('#nMove').value) || 5, 1, 30), news: $('#nNews').checked,
       news_market: $('#nNewsMkt').checked, news_level: $('#nNewsLvl').value };
     store.set('notify', App.notify);

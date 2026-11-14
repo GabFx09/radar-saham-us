@@ -303,7 +303,8 @@ def portfolio_lines(cfg, by, rows):
     adv = {}
     for v, h, _ in det:
         hist = load_json(os.path.join("history", f"{h['sym']}.json"))
-        adv[h["sym"]] = penasihat.advise(h, by[h["sym"]], penasihat.closes_since(hist, h.get("date")), v / val if val else 0)
+        adv[h["sym"]] = penasihat.advise(h, by[h["sym"]], penasihat.closes_since(hist, h.get("date")), v / val if val else 0,
+                                      profile=(cfg.get("settings") or {}).get("profile"))
     CTX["advice"] = adv
     pl_tot = val - cost if cost else None
     L = [f"\n<b>💼 PORTOFOLIO</b> · nilai <b>{usd(val)}</b> · hari ini {'+' if day >= 0 else ''}{usd(day)}"

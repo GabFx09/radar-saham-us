@@ -335,3 +335,9 @@ pre.code { max-width: 100%; }
 .today-flow { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 8px 10px; margin: 0 0 10px; border: 1px solid var(--border); border-left: 3px solid var(--text-3); font-size: 13px; }
 .today-flow.in { border-left-color: var(--up); }
 .today-flow.out { border-left-color: var(--down); }
+
+/* ---- profil risiko */
+.prof-seg { display: flex; gap: 0; border: 1px solid var(--border); width: fit-content; max-width: 100%; }
+.prof-seg button { background: none; border: 0; border-right: 1px solid var(--border); color: var(--text-2); font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer; }
+.prof-seg button:last-child { border-right: 0; }
+.prof-seg button.on { background: var(--accent); color: #000; font-weight: 700; }

@@ -6,17 +6,100 @@
 'use strict';
 
 const REB_DEF = { maxW: 0.25, n: 0, cash: 0, frac: true, keep: false, floor: 0.6, macro: true, regime: false };
-function rebOpts() { return Object.assign({}, REB_DEF, store.get('rebal', {})); }
+function rebOpts() { return Object.assign({}, REB_DEF, { maxW: typeof prof === 'function' ? prof().maxW : REB_DEF.maxW }, store.get('rebal', {})); }
+
+/* ---- profil risiko: mengubah pemilihan kandidat, bobot, batas per saham/sektor, trailing stop, dan porsi saham */
+const PROFILES = {
+  konservatif: { n: 'Konservatif', ico: '🛡️', maxW: 0.20, addW: 0.15, trail: [0.35, 0.08, 0.22], eqAdj: -0.15, nAdj: 2, sec: 0.30,
+    desc: 'Mengutamakan stabilitas: saham berkualitas, volatilitas rendah, dividen. Cocok untuk dana yang dipakai dalam 1–3 tahun atau bila sulit tenang saat pasar turun.' },
+  seimbang: { n: 'Seimbang', ico: '⚖️', maxW: 0.25, addW: 0.20, trail: [0.45, 0.10, 0.30], eqAdj: 0, nAdj: 0, sec: 0.35,
+    desc: 'Campuran kualitas dan pertumbuhan dengan pengendalian risiko — pengaturan bawaan Radar.' },
+  agresif: { n: 'Agresif', ico: '🚀', maxW: 0.30, addW: 0.25, trail: [0.55, 0.15, 0.35], eqAdj: 0.15, nAdj: -1, sec: 0.45,
+    desc: 'Mengejar pertumbuhan: potensi naik besar, pertumbuhan & momentum tinggi, aliran dana masuk; menerima saham lebih volatil dan keyakinan nilai wajar lebih rendah. Cocok untuk horizon ≥ 5–10 tahun dan bila siap melihat portofolio turun 30–40% tanpa panik menjual.' },
+};
+function profileKey() { const k = App.notify && App.notify.profile; return PROFILES[k] ? k : 'seimbang'; }
+function prof() { return PROFILES[profileKey()]; }
 
 function conviction(s) {
+  const P = profileKey();
   const up = s.val ? s.val.upside : 0;
-  const conf = { Tinggi: 1.15, Sedang: 1, Rendah: 0.7 }[(s.val || {}).confidence] || 0.9;
   const mc = (s.q && s.q.mc) || {};
-  const base = Math.max(4, s.score - 52) * (1 + clamp(up || 0, -0.3, 0.6)) * conf * (1 - 0.8 * (mc.p_loss20 || 0.2));
   const vol = (s.q && s.q.vol) || 0.35;
-  return base / Math.sqrt(Math.max(0.15, vol) / 0.3); // sedikit lebih kecil untuk saham sangat volatil
+  if (P === 'agresif') {
+    const conf = { Tinggi: 1.1, Sedang: 1, Rendah: 0.8 }[(s.val || {}).confidence] || 0.9;
+    const base = Math.max(4, s.score - 50) * (1 + clamp(up || 0, -0.3, 0.8)) * conf * (1 - 0.4 * (mc.p_loss20 || 0.2));
+    return base / Math.pow(Math.max(0.15, vol) / 0.3, 0.25);
+  }
+  const conf = { Tinggi: 1.15, Sedang: 1, Rendah: 0.7 }[(s.val || {}).confidence] || 0.9;
+  const base = Math.max(4, s.score - 52) * (1 + clamp(up || 0, -0.3, 0.6)) * conf * (1 - 0.8 * (mc.p_loss20 || 0.2));
+  return base / Math.pow(Math.max(0.15, vol) / 0.3, P === 'konservatif' ? 1 : 0.5); // lebih kecil untuk saham sangat volatil
 }
-/** Pilihan Teratas di Beranda: Strong Buy dulu, lalu skor tertinggi. */
+function candidateQuality(s) {
+  const P = profileKey();
+  const up = s.val ? s.val.upside : 0, mc = (s.q && s.q.mc) || {}, f = s.factors || {}, conf = (s.val || {}).confidence;
+  if (P === 'agresif') {
+    return 0.7 * s.score + 25 * clamp(up || 0, 0, 0.8) + 0.12 * (f.growth ?? 50) + 0.08 * (f.momentum ?? 50) + 0.1 * ((s.flow ?? 50) - 50)
+      - 10 * (mc.p_loss20 || 0.2) - (conf === 'Rendah' ? 3 : 0) + (conf === 'Tinggi' ? 2 : 0);
+  }
+  if (P === 'konservatif') {
+    return s.score + 10 * clamp(up || 0, 0, 0.4) - 30 * (mc.p_loss20 || 0.2) + 0.1 * (f.quality ?? 50) + 0.08 * (f.lowvol ?? 50)
+      + (conf === 'Tinggi' ? 5 : 0) + ((s.m || {}).div_yield >= 0.02 ? 3 : 0);
+  }
+  return s.score + 15 * clamp(up || 0, 0, 0.6) - 20 * (mc.p_loss20 || 0.2) + (conf === 'Tinggi' ? 4 : 0);
+}
+/** Saham yang layak jadi kandidat beli untuk profil aktif. */
+function profileEligible(s) {
+  if (!(s.rating === 'STRONG BUY' || s.rating === 'BUY') || !s.val) return false;
+  const P = profileKey(), conf = s.val.confidence, mc = (s.q && s.q.mc) || {}, vol = (s.q && s.q.vol) || 0.35;
+  if (P === 'agresif') return (mc.p_loss20 || 0) < (conf === 'Rendah' ? 0.35 : 0.45); // risiko besar boleh, tapi bukan setengah peluang jatuh 20%
+  if (P === 'konservatif') return conf !== 'Rendah' && vol <= 0.45 && (mc.p_loss20 || 0) <= 0.3;
+  return conf !== 'Rendah';
+}
+function profilePicks(n = 8) {
+  const held = new Set(App.holdings.map((h) => h.sym));
+  return App.data.stocks.filter((s) => profileEligible(s) && !held.has(s.sym)).sort((a, b) => candidateQuality(b) - candidateQuality(a)).slice(0, n);
+}
+function setProfile(k) {
+  App.notify.profile = k;
+  store.set('notify', App.notify);
+  const o = store.get('rebal', {});
+  store.set('rebal', Object.assign(o, { maxW: PROFILES[k].maxW, n: 0 }));
+  if (typeof cloudChanged === 'function') cloudChanged();
+}
+function profileCard() {
+  const k = profileKey(), P = PROFILES[k];
+  const picks = profilePicks(8);
+  const T = typeof timing === 'function' && App.dunia ? timing() : null;
+  return `<div class="card card-pad" style="margin-top:12px" id="profCard">
+    <h3 class="card-title">Profil Risiko &amp; Rekomendasi</h3>
+    <div class="prof-seg">${Object.entries(PROFILES).map(([key, p]) => `<button class="${key === k ? 'on' : ''}" data-prof="${key}">${p.ico} ${p.n}</button>`).join('')}</div>
+    <p class="small" style="margin:10px 0 6px">${esc(P.desc)}</p>
+    <div class="kv k3" style="margin:6px 0 10px">
+      <div><div class="l">Maks per saham</div><div class="v">${Math.round(P.maxW * 100)}%</div></div>
+      <div><div class="l">Maks per sektor</div><div class="v">${Math.round(P.sec * 100)}%</div></div>
+      <div><div class="l">Trailing stop</div><div class="v">${Math.round(P.trail[1] * 100)}–${Math.round(P.trail[2] * 100)}%</div><div class="s">menyesuaikan volatilitas</div></div>
+      ${T ? `<div><div class="l">Porsi saham disarankan</div><div class="v">±${Math.round(T.equity * 100)}%</div><div class="s">rezim ${esc(T.label)}${P.eqAdj ? ` ${P.eqAdj > 0 ? '+' : '−'}${Math.round(Math.abs(P.eqAdj) * 100)}% profil` : ''}</div></div>` : ''}
+    </div>
+    <div class="mk-label">Rekomendasi teratas untuk profil ${P.n} (selain yang sudah Anda miliki)</div>
+    <div class="cmp-scroll"><table class="hold-table"><tr><th>Saham</th><th class="r">Potensi</th><th class="r">Pertumbuhan</th><th class="r">Volatilitas</th><th class="r">Risiko turun 20%</th><th class="r">Aliran dana</th></tr>
+      ${picks.map((s) => { const mc = (s.q && s.q.mc) || {}; return `<tr><td><a href="#/s/${encodeURIComponent(s.sym)}"><b>${esc(s.sym)}</b></a> ${ratingBadge(s.rating)}<div class="faint small">${esc(s.sector)} · ${fmt.usd(s.price)} · keyakinan ${esc((s.val || {}).confidence || '–')}</div></td>
+        <td class="r mono ${cls(s.val.upside)}">${fmt.pct(s.val.upside, 0)}</td><td class="r mono">${Math.round(s.pillars.growth)}</td>
+        <td class="r mono">${s.q && s.q.vol ? Math.round(s.q.vol * 100) + '%' : '–'}</td><td class="r mono ${(mc.p_loss20 || 0) >= 0.35 ? 'down' : ''}">${mc.p_loss20 != null ? Math.round(mc.p_loss20 * 100) + '%' : '–'}</td>
+        <td class="r mono" style="color:${scoreColor(s.flow ?? 50)}">${s.flow != null ? Math.round(s.flow) : '–'}</td></tr>`; }).join('')}
+    </table></div>
+    ${k === 'agresif' ? `<ul class="small muted" style="margin:10px 0 0;padding-left:18px">
+      <li>Usia muda = horizon panjang: penurunan 30–40% biasanya sempat pulih, dan waktu adalah keuntungan terbesar Anda.</li>
+      <li>Tetap sisihkan <b>dana darurat</b> 3–6 bulan pengeluaran di tabungan/RDPU — jangan di saham.</li>
+      <li>Masuk <b>bertahap</b> dan tambah rutin tiap bulan (DCA); jangan memakai utang atau margin.</li>
+      <li>Agresif bukan berarti 1–2 saham: tetap 5–7 saham di beberapa sektor, maks ${Math.round(P.maxW * 100)}% per saham.</li></ul>` : ''}
+    <p class="small faint" style="margin:8px 0 0">Profil dipakai Saran Rebalancing, Penasihat (trailing stop &amp; batas bobot), dan porsi saham di Waktu Masuk. Tersinkron ke notifikasi bila cloud aktif. Bukan nasihat keuangan pribadi.</p>
+  </div>`;
+}
+function bindProfile(el) {
+  const c = $('#profCard');
+  if (!c) return;
+  c.querySelectorAll('[data-prof]').forEach((b) => { b.onclick = () => { setProfile(b.dataset.prof); const y = window.scrollY; renderPorto(el); window.scrollTo(0, y); toast('Profil ' + PROFILES[b.dataset.prof].n + ' dipakai'); }; });
+}/** Pilihan Teratas di Beranda: Strong Buy dulu, lalu skor tertinggi. */
 function homePicks(n = 8) {
   return App.data.stocks.filter((s) => s.rating === 'STRONG BUY' || s.rating === 'BUY')
     .sort((a, b) => (b.rating === 'STRONG BUY') - (a.rating === 'STRONG BUY') || b.score - a.score).slice(0, n);
@@ -29,15 +112,11 @@ function whyNotPicked(sel, N, opt) {
     const risk = (mc.p_loss20 || 0) >= 0.3 ? ` · peluang turun 20% dalam simulasi ${Math.round(mc.p_loss20 * 100)}%` : '';
     if (App.holdings.some((h) => h.sym === s.sym)) return { s, t: 'sudah Anda miliki, tetapi penasihat menyarankan JUAL' };
     if (!s.val) return { s, t: 'belum ada nilai wajar' };
-    if (conf === 'Rendah') return { s, t: 'keyakinan nilai wajar rendah — perkiraan harga wajarnya kurang bisa diandalkan' + risk };
+    if (!profileEligible(s)) return { s, t: (conf === 'Rendah' ? 'keyakinan nilai wajar rendah — perkiraan harga wajarnya kurang bisa diandalkan' : `terlalu berisiko untuk profil ${prof().n}`) + risk };
     const same = sel.find((x) => x.s.sector === s.sector);
     if (same) return { s, t: `sektor ${s.sector} sudah terwakili oleh ${same.s.sym} — diutamakan sektor yang belum Anda punya` };
     return { s, t: `kalah peringkat risiko/imbal hasil dari kandidat terpilih (jumlah saham dibatasi ${N}${opt.n ? '' : ' otomatis sesuai nilai portofolio'})` + risk };
   });
-}
-function candidateQuality(s) {
-  const up = s.val ? s.val.upside : 0, mc = (s.q && s.q.mc) || {};
-  return s.score + 15 * clamp(up || 0, 0, 0.6) - 20 * (mc.p_loss20 || 0.2) + ((s.val || {}).confidence === 'Tinggi' ? 4 : 0);
 }
 /** Batasi bobot tiap saham <= maxW dan tiap sektor <= maxSec, distribusikan sisa secara proporsional. */
 function capWeights(items, maxW, maxSec) {
@@ -68,15 +147,15 @@ function computeRebalance(rows, opt) {
   const cur = rows.reduce((a, r) => a + r.val, 0);
   const V = cur + (Number(opt.cash) || 0);
   if (V <= 0) return null;
-  const N = opt.n || (V < 1500 ? 4 : V < 6000 ? 6 : V < 25000 ? 8 : 10);
+  const N = opt.n || Math.max(3, (V < 1500 ? 4 : V < 6000 ? 6 : V < 25000 ? 8 : 10) + prof().nAdj);
   const maxW = Math.max(opt.maxW, 1 / N + 0.02);
-  const maxSec = Math.max(0.35, maxW + 0.05);
+  const maxSec = Math.max(prof().sec, maxW + 0.05);
   // 1. kepemilikan: jual bila saran JUAL (kecuali opsi "jangan jual")
   const keep = rows.filter((r) => opt.keep || r.adv.act !== 'JUAL');
   const sel = keep.map((r) => ({ s: r.s, held: r }));
   // 2. kandidat: Buy/Strong Buy, keyakinan bukan Rendah, utamakan sektor baru
   const have = new Set(sel.map((x) => x.s.sym));
-  const pool = App.data.stocks.filter((s) => (s.rating === 'STRONG BUY' || s.rating === 'BUY') && s.val && s.val.confidence !== 'Rendah'
+  const pool = App.data.stocks.filter((s) => profileEligible(s)
     && !have.has(s.sym) && !App.holdings.some((h) => h.sym === s.sym)).sort((a, b) => candidateQuality(b) - candidateQuality(a));
   const secCount = () => sel.reduce((m, x) => ((m[x.s.sector] = (m[x.s.sector] || 0) + 1), m), {});
   while (sel.length < N && pool.length) {
@@ -104,7 +183,7 @@ function computeRebalance(rows, opt) {
   }
   // porsi kas sesuai rezim (skor Waktu Masuk)
   const T = typeof timing === 'function' && App.dunia ? timing() : null;
-  const eq = opt.regime && T ? T.equity : 1;
+  const eq = opt.regime && T ? T.equity : 1; // T.equity sudah memperhitungkan profil
   w = w.map((x) => x * eq);
   const plan = items.map((x, i) => {
     const s = x.s, tv = w[i] * V, cv = x.held ? x.held.val : 0;
@@ -140,7 +219,7 @@ function rebalanceCard(rows) {
   const shTxt = (p) => (p.sh === 0 ? '–' : `${p.sh > 0 ? '+' : '−'}${Math.abs(p.sh).toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
   return `<div class="card card-pad" style="margin-top:12px" id="rebCard">
     <div class="section-head" style="margin-bottom:6px;align-items:center;flex-wrap:wrap"><h3 class="card-title" style="margin:0">Saran Rebalancing</h3><button class="btn" id="rbCopy">Salin rencana</button></div>
-    <p class="small muted" style="margin:0 0 10px">Target alokasi ${R.N} saham dari portofolio Anda + kandidat Buy/Strong Buy terbaik, dengan batas ${Math.round(R.maxW * 100)}% per saham dan keragaman sektor. Bobot mengikuti keyakinan model (skor, potensi naik, keyakinan nilai wajar, risiko simulasi, volatilitas).</p>
+    <p class="small muted" style="margin:0 0 10px">Profil <b>${prof().ico} ${prof().n}</b> · target alokasi ${R.N} saham dari portofolio Anda + kandidat Buy/Strong Buy terbaik, dengan batas ${Math.round(R.maxW * 100)}% per saham dan keragaman sektor. Bobot mengikuti keyakinan model (skor, potensi naik, keyakinan nilai wajar, risiko simulasi, volatilitas).</p>
     <div class="reb-opts">
       <label>Maks/saham <select id="rbW">${[0.15, 0.2, 0.25, 0.3, 0.4].map((v) => `<option value="${v}" ${v === o.maxW ? 'selected' : ''}>${v * 100}%</option>`).join('')}</select></label>
       <label>Jumlah saham <select id="rbN"><option value="0" ${!o.n ? 'selected' : ''}>otomatis</option>${[3, 4, 5, 6, 8, 10, 12].map((v) => `<option value="${v}" ${v === o.n ? 'selected' : ''}>${v}</option>`).join('')}</select></label>

@@ -22,7 +22,15 @@ def _abs(x, d=0):
     return "–" if x is None else f"{abs(x) * 100:.{d}f}%"
 
 
-def advise(h, s, closes=None, weight=0.0, now=None):
+PROFILES = {  # sama dengan docs/rebal.js
+    "konservatif": {"trail": (0.35, 0.08, 0.22), "maxW": 0.20, "addW": 0.15},
+    "seimbang": {"trail": (0.45, 0.10, 0.30), "maxW": 0.25, "addW": 0.20},
+    "agresif": {"trail": (0.55, 0.15, 0.35), "maxW": 0.30, "addW": 0.25},
+}
+
+
+def advise(h, s, closes=None, weight=0.0, now=None, profile=None):
+    PF = PROFILES.get(profile or "seimbang", PROFILES["seimbang"])
     now = now or time.time()
     price = s.get("price") or 0
     val = s.get("val") or {}
@@ -65,7 +73,7 @@ def advise(h, s, closes=None, weight=0.0, now=None):
         add(-1, -1, f"Rekomendasi turun sejak dibeli ({buy['rating']} → {rt})")
     # 4. untung/rugi & trailing stop
     pl = price / cost - 1 if cost else None
-    trail = max(0.10, min(0.30, vol * 0.45))
+    trail = max(PF["trail"][1], min(PF["trail"][2], vol * PF["trail"][0]))
     if closes:
         peak = max(closes + [price])
         dd = price / peak - 1 if peak else 0
@@ -113,10 +121,10 @@ def advise(h, s, closes=None, weight=0.0, now=None):
         act = "KURANGI"
     else:
         act = "JUAL"
-    if weight > 0.25 and act in ("TAMBAH", "TAHAN"):
+    if weight > PF["maxW"] and act in ("TAMBAH", "TAHAN"):
         act = "KURANGI"
-        R.append({"s": -1, "t": f"Bobot {weight * 100:.0f}% dari portofolio — kurangi sebagian untuk diversifikasi (saran ≤ 20–25%)"})
-    elif weight > 0.20 and act == "TAMBAH":
+        R.append({"s": -1, "t": f"Bobot {weight * 100:.0f}% dari portofolio — kurangi sebagian untuk diversifikasi (saran ≤ {PF['maxW'] * 100:.0f}%)"})
+    elif weight > PF["addW"] and act == "TAMBAH":
         act = "TAHAN"
         R.append({"s": 0, "t": f"Bobot sudah {weight * 100:.0f}% — jangan ditambah lagi"})
     e = s.get("earnings_ts")
