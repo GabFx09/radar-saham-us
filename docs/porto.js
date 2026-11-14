@@ -151,6 +151,7 @@ function renderPorto(el) {
         <ul>${r.adv.reasons.map((x) => `<li class="${x.s > 0 ? 'up' : x.s < 0 ? 'down' : 'muted'}">${x.s > 0 ? '+' : x.s < 0 ? '−' : '·'} <span>${esc(x.t)}</span></li>`).join('')}</ul></div>`).join('')}
       <p class="small faint" style="margin:8px 0 0">Bukan perintah jual-beli. Model tidak tahu tujuan, pajak, dan jangka waktu Anda — gunakan sebagai pemeriksaan kedua.</p>
     </div>
+    ${rebalanceCard(rows)}
     <div class="grid-2" style="margin-top:12px">
       <div class="card card-pad"><h3 class="card-title">Alokasi Sektor</h3>
         <div class="port-wrap"><div class="donut-box">${svg}<div class="donut-c"><b>${rows.length}</b><span>saham</span></div></div>
@@ -188,6 +189,7 @@ function renderPorto(el) {
     renderPorto(el);
   };
   $$('[data-edit]').forEach((b) => { b.onclick = () => editHolding(b.dataset.edit, el); });
+  bindRebalance(rows, el);
   const cp = $('#pCopy');
   if (cp) cp.onclick = async () => {
     const txt = [`Portofolio saya (data Radar Saham per ${App.data.generated.slice(0, 10)}):`].concat(rows.map((r) =>

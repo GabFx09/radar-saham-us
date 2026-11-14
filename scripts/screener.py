@@ -284,6 +284,42 @@ def get_universe(args):
 
 
 # ----------------------------------------------------------------------------- data fetch
+CACHE_DIR = os.path.join(ROOT, ".cache", "fund")
+CACHE_STATS = {"hit": 0, "miss": 0}
+
+
+def cache_get(sym, info):
+    """Laporan keuangan dari cache bila masih segar: umur < 5-9 hari (tersebar per saham) dan belum ada
+    laporan laba baru sejak disimpan. Info harga/rasio tetap diambil segar setiap hari."""
+    import pickle
+    import zlib as _z
+    p = os.path.join(CACHE_DIR, f"{sym}.pkl")
+    try:
+        with open(p, "rb") as fh:
+            d = pickle.load(fh)
+    except Exception:  # noqa: BLE001
+        CACHE_STATS["miss"] += 1
+        return None
+    age = time.time() - d.get("t", 0)
+    max_age = 86400 * (5 + _z.crc32(sym.encode()) % 5)
+    last_earn = info.get("earningsTimestamp") or 0
+    if age > max_age or (isinstance(last_earn, (int, float)) and last_earn > d.get("t", 0) - 86400):
+        CACHE_STATS["miss"] += 1
+        return None
+    CACHE_STATS["hit"] += 1
+    return d["data"]
+
+
+def cache_put(sym, data):
+    import pickle
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(os.path.join(CACHE_DIR, f"{sym}.pkl"), "wb") as fh:
+            pickle.dump({"t": time.time(), "data": data}, fh)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def fetch_fundamentals(sym):
     last_err = None
     for attempt in range(3):
@@ -294,6 +330,9 @@ def fetch_fundamentals(sym):
                 return sym, None, "bukan saham"
             if not (info.get("currentPrice") or info.get("regularMarketPrice")):
                 raise RuntimeError("info kosong")
+            cached = cache_get(sym, info)
+            if cached:
+                return sym, (info, *cached), None
             inc = t.income_stmt
             bal = t.balance_sheet
             cf = t.cashflow
@@ -303,6 +342,7 @@ def fetch_fundamentals(sym):
                 qcf = t.quarterly_cashflow
             except Exception:
                 pass
+            cache_put(sym, (inc, bal, cf, qinc, qcf))
             return sym, (info, inc, bal, cf, qinc, qcf), None
         except Exception as e:
             last_err = e
@@ -610,6 +650,13 @@ def compute_fund(info, inc, bal, cf, qinc=None, qcf=None, mclose=None):
         fcf_use = qd["fcf_ttm"]
         f["fcf_src"] = "ttm"
     f["fcf"] = fcf_use
+    # kualitas laba (Sloan): akrual = (laba bersih - arus kas operasi) / total aset — tinggi = laba "kertas"
+    ocf0 = srow(cf, "Operating Cash Flow", 0)
+    ta0 = srow(bal, "Total Assets", 0)
+    f["accruals"] = (ni[0] - ocf0) / ta0 if (ni[0] is not None and ocf0 is not None and ta0 and ta0 > 0 and not is_fin) else None
+    # dilusi: perubahan jumlah saham beredar (rata-rata terdilusi) setahun
+    shs = sseries(inc, ["Diluted Average Shares", "Basic Average Shares"], 2)
+    f["share_chg"] = shs[0] / shs[1] - 1 if (shs[0] and shs[1] and shs[1] > 0) else None
     f["fcf_margin"] = div(fcf_use, rev_ttm or rev[0])
 
     ebit = srow(inc, ["EBIT", "Operating Income"], 0)
@@ -744,6 +791,7 @@ PILLARS = {
     "quality": [
         ("roic", 0.00, 0.22, 1.5, 0.0),
         ("roe", 0.00, 0.25, 1.1, 2.0),
+        ("accruals", 0.10, -0.06, 0.6, 0.0),
         ("roa", 0.00, 0.12, 0.6, 1.5),
         ("gross_margin", 0.15, 0.60, 0.7, 0.0),
         ("op_margin", 0.00, 0.30, 1.0, 0.8),
@@ -774,6 +822,7 @@ PILLARS = {
         ("netdebt_ebitda", 4.0, 0.0, 1.0, 0.0),
         ("int_cov", 2.0, 15.0, 0.8, 0.0),
         ("altman", 1.8, 4.0, 0.7, 0.0),
+        ("share_chg", 0.10, -0.03, 0.6, 0.4),
     ],
 }
 PILLAR_W = {"quality": 0.30, "value": 0.28, "growth": 0.22, "health": 0.20}
@@ -1146,6 +1195,21 @@ def build_reasons(rec, medians):
         C(60, f"Payout ratio {pct(f['payout'])} — dividen melebihi laba, keberlanjutan perlu dicermati.",
           "Pemegang Saham")
 
+    ff = rec["f"]
+    acc, shc = ff.get("accruals"), ff.get("share_chg")
+    if acc is not None:
+        if acc >= 0.10:
+            C(50 + min(acc, 0.3) * 80, f"Kualitas laba rendah: laba bersih melebihi arus kas operasi sebesar {pct(acc)} dari total aset "
+                                      f"(akrual tinggi — sering mendahului penurunan laba).", "Kualitas Laba")
+        elif acc <= -0.06 and rec["fund"] >= 60:
+            P(50 + min(-acc, 0.2) * 60, f"Kualitas laba tinggi: arus kas operasi melebihi laba bersih ({pct(-acc)} dari aset).", "Kualitas Laba")
+    if shc is not None:
+        if shc >= 0.08:
+            C(50 + min(shc, 0.5) * 60, f"Dilusi: jumlah saham beredar bertambah {pct(shc)} dalam setahun — porsi pemegang saham lama mengecil.",
+              "Dilusi")
+        elif shc <= -0.03:
+            P(48 + min(-shc, 0.1) * 150, f"Jumlah saham beredar berkurang {pct(-shc)} setahun (buyback) — porsi tiap saham membesar.",
+              "Pemegang Saham")
     ins = (rec.get("est") or {}).get("ins")
     if ins:
         b90 = ins.get("buy90") or {}
@@ -1343,6 +1407,7 @@ def main():
                     raw[s] = data
         log(f"  berhasil total: {len(raw)}")
 
+    log(f"  cache laporan keuangan: {CACHE_STATS['hit']} dipakai ulang, {CACHE_STATS['miss']} diunduh baru")
     log("  Mengunduh harga bulanan 5 tahun (valuasi vs riwayat sendiri)...")
     mprices = fetch_monthly(list(raw.keys()))
     log(f"  bulanan: {len(mprices)}/{len(raw)}")
@@ -1504,7 +1569,7 @@ def main():
 
     # ---------------- ekspor
     def metrics_out(f):
-        keys = ["roe", "roa", "roic", "gross_margin", "op_margin", "net_margin", "fcf_margin", "margin_trend",
+        keys = ["accruals", "share_chg", "roe", "roa", "roic", "gross_margin", "op_margin", "net_margin", "fcf_margin", "margin_trend",
                 "rev_growth", "earn_growth", "rev_cagr3", "fcf_cagr3", "eps_growth_fwd", "eps_ttm", "eps_fwd",
                 "pe_ttm", "pe_fwd", "peg", "ev_ebitda", "fcf_yield", "ps", "pb", "de", "current_ratio",
                 "netdebt_ebitda", "int_cov", "piotroski", "altman", "div_yield", "payout", "buyback_yield",

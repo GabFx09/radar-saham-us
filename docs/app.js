@@ -458,6 +458,7 @@ const METRICS = [
     ['net_margin', 'Net Margin', '%', 'Laba bersih ÷ pendapatan.'],
     ['fcf_margin', 'FCF Margin', '%', 'Free cash flow ÷ pendapatan.', 'fcf_margin'],
     ['margin_trend', 'Perubahan Margin Operasi', 'pp', 'Selisih margin operasi vs tahun sebelumnya.', 'margin_trend'],
+    ['accruals', 'Akrual (kualitas laba)', '%', '(Laba bersih − arus kas operasi) ÷ total aset. Negatif = laba didukung kas (baik); > 10% = laba "kertas".', 'accruals'],
   ]],
   ['Pertumbuhan', [
     ['rev_growth', 'Pendapatan (YoY kuartal)', '%', 'Pertumbuhan pendapatan kuartal terakhir vs tahun lalu.', 'rev_growth'],
@@ -475,6 +476,7 @@ const METRICS = [
     ['current_ratio', 'Current Ratio', 'x2', 'Aset lancar ÷ kewajiban lancar.', 'current_ratio'],
     ['netdebt_ebitda', 'Utang Bersih / EBITDA', 'x', 'Berapa tahun laba operasi untuk melunasi utang bersih. Negatif = kas bersih.', 'netdebt_ebitda'],
     ['int_cov', 'Interest Coverage', 'x', 'EBIT ÷ beban bunga.', 'int_cov'],
+    ['share_chg', 'Perubahan Jumlah Saham', '%', 'Jumlah saham beredar vs setahun lalu. Positif = dilusi; negatif = buyback.', 'share_chg'],
   ]],
   ['Pemegang Saham', [
     ['div_yield', 'Dividend Yield', '%', ''],
@@ -919,6 +921,10 @@ function renderMethod(el) {
     <p><b>Valuasi vs riwayat sendiri</b> — P/E dan P/S tiap akhir tahun fiskal (≤4 tahun, dari laporan keuangan + harga bulanan) dibanding nilai sekarang. Premi/diskon P/E terhadap median sendiri menjadi salah satu metrik pilar Valuasi.</p>
     <p><b>Uji sinyal</b> — setiap hari nilai faktor semua saham disimpan, lalu dihitung <i>Information Coefficient</i> (korelasi peringkat Spearman) terhadap return 1 minggu, 1 bulan, dan 3 bulan sesudahnya.</p>
     <p><b>Universe</b> — S&amp;P 500 + S&amp;P MidCap 400 (dari Wikipedia) + beberapa saham growth populer.</p>
+
+    <h2>Kualitas Laba &amp; Dilusi</h2>
+    <p><b>Akrual</b> = (laba bersih − arus kas operasi) ÷ total aset. Laba yang jauh di atas arus kas sering bersifat sementara (riset Sloan, 1996), sehingga akrual tinggi menurunkan pilar Kualitas. <b>Perubahan jumlah saham</b> setahun: penerbitan saham baru (dilusi) menurunkan pilar Kesehatan, buyback menaikkannya.</p>
+    <p><b>Harga live</b> — harga diperbarui ±20 menit dari bar 15 menit (aset makro sepanjang hari, saham saat bursa buka). Skor &amp; nilai wajar tetap dihitung sekali sehari; proyeksi naik dihitung ulang dari harga live.</p>
 
     <h2>8. Revisi Estimasi &amp; Monitor Makro</h2>
     <p><b>Revisi estimasi</b> — untuk ±230 saham teratas, perubahan estimasi EPS tahun ini &amp; tahun depan dalam 7/30/90 hari, jumlah revisi naik vs turun, dan kejutan laba 4 kuartal. Skor revisi (55% revisi 90 hari, 20% rasio naik/turun, 25% kejutan laba) menyumbang 40% skor analis.</p>

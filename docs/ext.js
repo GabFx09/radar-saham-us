@@ -309,6 +309,11 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
     </div>
 
     <div class="card card-pad" style="margin-top:12px">
+      <h3 class="card-title">Status Data</h3>
+      <div id="dataStatus" class="small muted">memeriksa…</div>
+    </div>
+
+    <div class="card card-pad" style="margin-top:12px">
       <h3 class="card-title">Cadangan Manual</h3>
       <p class="small muted" style="margin-top:0">Tanpa akun cloud: salin kode ini lalu tempel di perangkat lain.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="bkCopy">Salin kode cadangan</button><button class="btn" id="bkPaste">Tempel kode…</button></div>
@@ -316,6 +321,7 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
     <p class="disclaimer">Notifikasi berjalan di GitHub Actions milik repo Anda; jadwal GitHub bisa terlambat beberapa menit hingga jam pada saat sibuk.</p>
   </div>`;
 
+  dataStatus();
   const on = $('#cOn');
   if (on) on.onclick = async () => {
     const t = $('#cTok').value.trim();
@@ -379,6 +385,33 @@ gh secret set GIST_TOKEN -R ${esc(slug)}</pre></li>
       render();
     } catch (e) { toast('Kode tidak valid'); }
   };
+}
+
+/* ------------------------------------------------------------ status kesegaran data */
+async function dataStatus() {
+  const el = $('#dataStatus');
+  if (!el) return;
+  const get = async (f) => { try { const r = await fetch('data/' + f, { cache: 'no-cache' }); return r.ok ? r.json() : null; } catch (e) { return null; } };
+  const [mk, br, ip, cy, lv] = await Promise.all([get('makro.json'), get('berita.json'), get('ipo.json'), get('cycles.json'), get('live.json')]);
+  const S = App.data.stocks;
+  const age = (t) => { if (!t) return null; const h = (Date.now() - Date.parse(t)) / 36e5; return h; };
+  const row = (n, t, maxH, extra) => {
+    const h = age(t);
+    const c = h == null ? 'down' : h <= maxH ? 'up' : h <= maxH * 2 ? '' : 'down';
+    const txt = h == null ? 'tidak ada' : h < 1 ? Math.round(h * 60) + ' menit lalu' : h < 48 ? Math.round(h) + ' jam lalu' : Math.round(h / 24) + ' hari lalu';
+    return `<tr><td>${n}</td><td class="r mono ${c}">${txt}</td><td class="small faint">${extra || ''}</td></tr>`;
+  };
+  if (!document.body.contains(el)) return;
+  el.innerHTML = `<table class="hold-table">
+    <tr><th>Sumber</th><th class="r">Diperbarui</th><th>Cakupan</th></tr>
+    ${row('Harga live', lv && lv.t, 1.5, lv ? `${Object.keys(lv.assets || {}).length} aset · ${Object.keys(lv.stocks || {}).length} saham` : '')}
+    ${row('Skor &amp; fundamental', App.data.generated, 36, `${S.length} saham · revisi estimasi ${S.filter((s) => s.rev != null).length} · orang dalam ${S.filter((s) => s.ins).length} · valuasi historis ${S.filter((s) => s.own).length}`)}
+    ${row('Monitor makro', mk && mk.generated, 36, mk ? `${mk.assets.reduce((a, g) => a + g.rows.length, 0)} aset · F&amp;G ${mk.fg ? Math.round(mk.fg.now) : '–'}` : '')}
+    ${row('Berita penting', br && br.generated, 36, br ? `${br.items.length} berita` : '')}
+    ${row('Kalender IPO', ip && ip.generated, 36, ip ? `${ip.upcoming.length} akan IPO · ${ip.recent.length} terbaru` : '')}
+    ${row('Siklus &amp; CAPE', App.data.generated, 36, cy && cy.longrun ? `CPI s.d. ${cy.longrun.cpi_until}` : '')}
+  </table>
+  <p class="small faint" style="margin:8px 0 0">Hijau = segar. Update harian berjalan setelah bursa AS tutup (±05.00–11.00 WIB, jadwal GitHub bisa terlambat); harga live tiap ±20 menit. Bila update gagal, peringatan dikirim ke Kabar.</p>`;
 }
 
 /* ------------------------------------------------------------ boot: tarik data cloud */

@@ -28,6 +28,12 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Pulihkan cache laporan keuangan
+        uses: actions/cache@v4
+        with:
+          path: .cache/fund
+          key: fund-${{ github.run_id }}
+          restore-keys: fund-
       - run: python scripts/screener.py --workers 6
       - name: Commit data baru
         run: |
@@ -40,3 +46,7 @@ jobs:
         if: ${{ env.GIST_TOKEN != '' || env.KABAR_TOKEN != '' || (env.TELEGRAM_TOKEN != '' && env.TELEGRAM_CHAT_ID != '') }}
         continue-on-error: true
         run: python scripts/notify.py digest
+      - name: Peringatan bila update gagal
+        if: ${{ failure() && env.KABAR_TOKEN != '' }}
+        run: |
+          python scripts/kabar.py "Update data Radar Saham GAGAL" "Workflow update harian gagal — data di aplikasi bisa basi. Cek log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" --saluran "Radar Saham" --prioritas tinggi --url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
