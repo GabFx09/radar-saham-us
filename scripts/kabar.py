@@ -206,6 +206,7 @@ def _push(cfg, previews, saluran, vapid, app_url, urgent, latest=None):
     if not vapid:
         print("kabar: KABAR_VAPID belum diatur — pesan tersimpan tanpa notifikasi push", file=sys.stderr)
         return set(), False
+    _vapid_check(vapid)
     if not devices:
         print("kabar: belum ada perangkat terdaftar untuk notifikasi — buka Kabar → Setelan → Aktifkan notifikasi",
               file=sys.stderr)
@@ -221,7 +222,6 @@ def _push(cfg, previews, saluran, vapid, app_url, urgent, latest=None):
     if _quiet_now(cfg.get("quiet")) and not urgent:
         print("kabar: jam tenang — pesan disimpan tanpa notifikasi", file=sys.stderr)
         return set(), False
-    _vapid_check(vapid)
     if len(previews) == 1:
         j, t = previews[0]
         title, body = (f"{saluran} · {j}" if j else saluran), (t or "").replace("\n", " ")[:220]
