@@ -183,7 +183,7 @@ def _vapid_check(vapid):
         from py_vapid import Vapid
         v = Vapid.from_pem(vapid.encode()) if "BEGIN" in vapid else Vapid.from_string(private_key=vapid)
         pub = v.public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
-        if _b64(pub) != VAPID_PUBLIC:
+        if base64.urlsafe_b64encode(pub).decode().rstrip("=") != VAPID_PUBLIC:
             print("kabar: PERINGATAN — KABAR_VAPID tidak cocok dengan kunci publik aplikasi Kabar; "
                   "notifikasi push akan ditolak. Periksa secret KABAR_VAPID.", file=sys.stderr)
             return False
