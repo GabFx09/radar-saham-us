@@ -176,6 +176,29 @@ def _plain(htm):
     return H.unescape(re.sub(r"<[^>]+>", "", htm or ""))
 
 
+def _merge_status(cfg, status, dead):
+    """Salin status push (ok/fail) dari cfg yang dipakai saat mengirim ke cfg terbaru, tanpa menimpa perubahan lain."""
+    byep = {d.get("endpoint"): d for d in status.get("devices") or []}
+    out = []
+    for d in cfg.get("devices") or []:
+        ep = d.get("endpoint")
+        if ep in dead:
+            continue
+        src = byep.get(ep)
+        if src is not None:
+            d = dict(d)
+            for k in ("ok", "fail", "failAt"):
+                if k in src:
+                    d[k] = src[k]
+                else:
+                    d.pop(k, None)
+        out.append(d)
+    cfg["devices"] = out
+    if status.get("pushlog"):
+        cfg["pushlog"] = status["pushlog"]
+    return cfg
+
+
 def _vapid_check(vapid):
     """Peringatkan bila KABAR_VAPID bukan pasangan VAPID_PUBLIC (push akan ditolak 403)."""
     try:
@@ -331,21 +354,16 @@ def kirim_banyak(pesan, saluran="Umum", token=None, vapid=None, kunci=None, app_
         new.append(m)
         previews.append((body["title"], _plain(body.get("html")) or body.get("text", "")))
     urgent = any(m.get("prio") == "tinggi" for m in new)
-    pushed_cfg = None
-    for attempt in range(3):  # baca-ubah-tulis dengan ulangan sederhana
+    status, dead = None, set()
+    if push:
+        dead, changed = _push(cfg0, previews, saluran, vapid, app_url, urgent, latest=new[-1]["t"])
+        status = cfg0 if changed else None
+    for attempt in range(3):  # baca-ubah-tulis dengan ulangan sederhana — dibaca ulang SESUDAH push agar tidak menimpa
         cfg, box = _read(token, gid)
         box = {"messages": ((box.get("messages") or []) + new)[-MAX_MSG:], "updated": _now()}
         files = {MSG_FILE: {"content": json.dumps(box, ensure_ascii=False)}, **attach}
-        if push and attempt == 0:
-            _, cfg_changed = _push(cfg, previews, saluran, vapid, app_url, urgent, latest=new[-1]["t"])
-            if cfg_changed:
-                pushed_cfg = cfg
-        if attempt and pushed_cfg is not None:
-            # tulis ulang dengan status perangkat terbaru dari percobaan pertama
-            byep = {d.get("endpoint"): d for d in pushed_cfg.get("devices") or []}
-            cfg["devices"] = [byep.get(d.get("endpoint"), d) for d in cfg.get("devices") or []]
-            cfg["pushlog"] = pushed_cfg.get("pushlog") or cfg.get("pushlog") or []
-        if pushed_cfg is not None:
+        if status is not None:
+            _merge_status(cfg, status, dead)
             files[CONFIG_FILE] = {"content": json.dumps(cfg, indent=1)}
         r = _gh(token, "PATCH", f"/gists/{gid}", json={"files": files})
         if r.ok:
@@ -434,9 +452,17 @@ def jalankan_pengingat(token=None, vapid=None, app_url=None):
         by_ch.setdefault(m["ch"], []).append(prev)
     box = {"messages": ((box.get("messages") or []) + new)[-MAX_MSG:], "updated": _now()}
     cfg["reminders"] = keep
+    dead = set()
     for ch, prevs in by_ch.items():
-        _push(cfg, prevs, ch, vapid, app_url, any(r.get("prio") == "tinggi" for r in due if (r.get("ch") or "Pengingat") == ch),
-              latest=new[-1]["t"])
+        dead |= _push(cfg, prevs, ch, vapid, app_url, any(r.get("prio") == "tinggi" for r in due if (r.get("ch") or "Pengingat") == ch),
+                      latest=new[-1]["t"])[0]
+    # baca ulang agar pesan/pengingat yang ditambahkan selama push tidak tertimpa
+    done = {r.get("id") for r in due}
+    fresh_cfg, fresh_box = _read(token, gid)
+    added = [r for r in fresh_cfg.get("reminders") or [] if r.get("id") not in done and r.get("id") not in {k.get("id") for k in keep}]
+    fresh_cfg["reminders"] = keep + added
+    cfg = _merge_status(fresh_cfg, cfg, dead)
+    box = {"messages": ((fresh_box.get("messages") or []) + new)[-MAX_MSG:], "updated": _now()}
     r = _gh(token, "PATCH", f"/gists/{gid}", json={"files": {MSG_FILE: {"content": json.dumps(box, ensure_ascii=False)},
                                                              CONFIG_FILE: {"content": json.dumps(cfg, indent=1)}}})
     if not r.ok:
