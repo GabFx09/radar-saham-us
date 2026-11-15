@@ -146,7 +146,7 @@ def flush():
             try:
                 import kabar
                 kabar.kirim_banyak(list(OUTBOX), saluran=KABAR_CHANNEL, token=KTOKEN, vapid=KVAPID)
-                log(f"{len(OUTBOX)} pesan terkirim ke Kabar ({'dengan' if KVAPID else 'tanpa'} notifikasi push).")
+                log(f"{len(OUTBOX)} pesan tersimpan di Kabar" + ("" if KVAPID else " (tanpa push: KABAR_VAPID kosong)") + ".")
             except Exception as e:  # noqa: BLE001
                 log(f"Kabar gagal: {e}")
         elif not TOKEN:

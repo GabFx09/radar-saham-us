@@ -39,6 +39,10 @@ MSG_FILE = "kabar-pesan.json"
 MAX_MSG = 1500
 MAX_IMG = 600 * 1024
 API = "https://api.github.com"
+# kunci publik VAPID yang tertanam di docs/app.js — dipakai untuk memeriksa KABAR_VAPID
+VAPID_PUBLIC = "BKi5lzLyw_MxKz2woZO7h9HpjKrtMq6FAZZRV6IrheJ3EknhNaNIK0qbMAcqslQJiC2w3d6QfR3gBSaKOXe-9us"
+FAIL_DROP = 4          # perangkat dilepas setelah sekian kali berturut-turut ditolak layanan push ...
+FAIL_DROP_HOURS = 24   # ... dan kegagalan pertama sudah lebih dari sekian jam
 
 
 class KabarError(RuntimeError):
@@ -172,22 +176,52 @@ def _plain(htm):
     return H.unescape(re.sub(r"<[^>]+>", "", htm or ""))
 
 
-def _push(cfg, previews, saluran, vapid, app_url, urgent):
-    """Kirim notifikasi push ke semua perangkat. previews: [(judul, teks)]. Mengembalikan endpoint yang mati."""
+def _vapid_check(vapid):
+    """Peringatkan bila KABAR_VAPID bukan pasangan VAPID_PUBLIC (push akan ditolak 403)."""
+    try:
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        from py_vapid import Vapid
+        v = Vapid.from_pem(vapid.encode()) if "BEGIN" in vapid else Vapid.from_string(private_key=vapid)
+        pub = v.public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+        if _b64(pub) != VAPID_PUBLIC:
+            print("kabar: PERINGATAN — KABAR_VAPID tidak cocok dengan kunci publik aplikasi Kabar; "
+                  "notifikasi push akan ditolak. Periksa secret KABAR_VAPID.", file=sys.stderr)
+            return False
+    except Exception as e:  # noqa: BLE001
+        print(f"kabar: KABAR_VAPID tidak bisa dibaca ({e.__class__.__name__}) — periksa formatnya", file=sys.stderr)
+        return False
+    return True
+
+
+def _push(cfg, previews, saluran, vapid, app_url, urgent, latest=None):
+    """Kirim notifikasi push ke semua perangkat. previews: [(judul, teks)].
+
+    Mengembalikan (endpoint yang dilepas, cfg berubah?). Perangkat yang ditolak layanan push (404/410) tidak
+    langsung dihapus: ditandai dulu ("fail") agar aplikasi mendaftarkan ulang dirinya saat dibuka, dan baru
+    dilepas setelah gagal berulang kali selama lebih dari FAIL_DROP_HOURS jam.
+    """
     devices = [d for d in cfg.get("devices") or [] if d.get("endpoint")]
-    if not devices or not vapid or not previews:
-        return set()
+    if not previews:
+        return set(), False
+    if not vapid:
+        print("kabar: KABAR_VAPID belum diatur — pesan tersimpan tanpa notifikasi push", file=sys.stderr)
+        return set(), False
+    if not devices:
+        print("kabar: belum ada perangkat terdaftar untuk notifikasi — buka Kabar → Setelan → Aktifkan notifikasi",
+              file=sys.stderr)
+        return set(), False
     try:
         from pywebpush import WebPushException, webpush
     except ImportError:
         print("kabar: pywebpush belum terpasang — `pip install pywebpush` untuk notifikasi push", file=sys.stderr)
-        return set()
+        return set(), False
     ch = (cfg.get("channels") or {}).get(saluran) or {}
     if ch.get("mute") and not urgent:
-        return set()
+        return set(), False
     if _quiet_now(cfg.get("quiet")) and not urgent:
         print("kabar: jam tenang — pesan disimpan tanpa notifikasi", file=sys.stderr)
-        return set()
+        return set(), False
+    _vapid_check(vapid)
     if len(previews) == 1:
         j, t = previews[0]
         title, body = (f"{saluran} · {j}" if j else saluran), (t or "").replace("\n", " ")[:220]
@@ -195,22 +229,46 @@ def _push(cfg, previews, saluran, vapid, app_url, urgent):
         title = f"{saluran} · {len(previews)} pesan baru"
         body = " · ".join(j or (t or "")[:40] for j, t in previews)[:220]
     payload = json.dumps({"title": title, "body": body, "tag": f"kabar-{saluran}", "prio": "tinggi" if urgent else "normal",
-                          "url": f"{app_url}#/c/{requests.utils.quote(saluran)}"})
-    dead = set()
+                          "url": f"{app_url}#/c/{requests.utils.quote(saluran)}", "t": latest or _now()})
+    dead, changed, ok, log = set(), False, 0, []
+    now = dt.datetime.now(dt.timezone.utc)
     for d in devices:
+        name = d.get("name", "perangkat")
+        code = None
         try:
             webpush(subscription_info={"endpoint": d["endpoint"], "keys": d.get("keys") or {}}, data=payload,
-                    vapid_private_key=vapid, vapid_claims={"sub": _origin(app_url)}, ttl=86400,
-                    headers={"Urgency": "high" if urgent else "normal"})
+                    vapid_private_key=vapid, vapid_claims={"sub": _origin(app_url)}, ttl=4 * 86400,
+                    headers={"Urgency": "high"})
+            ok += 1
+            if d.get("fail") or d.get("ok") != now.date().isoformat():
+                d.pop("fail", None), d.pop("failAt", None)
+                d["ok"] = now.date().isoformat()
+                changed = True
+            continue
         except WebPushException as e:
             code = getattr(e.response, "status_code", None)
-            if code in (404, 410):
-                dead.add(d["endpoint"])
-            else:
-                print(f"kabar: push ke {d.get('name', 'perangkat')} gagal ({code})", file=sys.stderr)
+            print(f"kabar: push ke {name} ditolak (HTTP {code})", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
-            print(f"kabar: push gagal: {e}", file=sys.stderr)
-    return dead
+            print(f"kabar: push ke {name} gagal: {e}", file=sys.stderr)
+        log.append({"t": _now(), "dev": name, "code": code, "ch": saluran})
+        if code in (404, 410):
+            d["fail"] = int(d.get("fail") or 0) + 1
+            d.setdefault("failAt", _now())
+            changed = True
+            try:
+                first = dt.datetime.fromisoformat(d["failAt"].replace("Z", "+00:00"))
+            except ValueError:
+                first = now
+            if d["fail"] >= FAIL_DROP and (now - first).total_seconds() > FAIL_DROP_HOURS * 3600:
+                dead.add(d["endpoint"])
+                print(f"kabar: {name} dilepas (langganan push sudah tidak berlaku)", file=sys.stderr)
+    if log:
+        cfg["pushlog"] = ((cfg.get("pushlog") or []) + log)[-20:]
+        changed = True
+    print(f"kabar: notifikasi push → {ok}/{len(devices)} perangkat", file=sys.stderr)
+    if dead:
+        cfg["devices"] = [d for d in cfg.get("devices") or [] if d.get("endpoint") not in dead]
+    return dead, changed
 
 
 # ----------------------------------------------------------------------------- kirim
@@ -273,13 +331,21 @@ def kirim_banyak(pesan, saluran="Umum", token=None, vapid=None, kunci=None, app_
         new.append(m)
         previews.append((body["title"], _plain(body.get("html")) or body.get("text", "")))
     urgent = any(m.get("prio") == "tinggi" for m in new)
+    pushed_cfg = None
     for attempt in range(3):  # baca-ubah-tulis dengan ulangan sederhana
         cfg, box = _read(token, gid)
         box = {"messages": ((box.get("messages") or []) + new)[-MAX_MSG:], "updated": _now()}
         files = {MSG_FILE: {"content": json.dumps(box, ensure_ascii=False)}, **attach}
-        dead = _push(cfg, previews, saluran, vapid, app_url, urgent) if push and attempt == 0 else set()
-        if dead:
-            cfg["devices"] = [d for d in cfg.get("devices") or [] if d.get("endpoint") not in dead]
+        if push and attempt == 0:
+            _, cfg_changed = _push(cfg, previews, saluran, vapid, app_url, urgent, latest=new[-1]["t"])
+            if cfg_changed:
+                pushed_cfg = cfg
+        if attempt and pushed_cfg is not None:
+            # tulis ulang dengan status perangkat terbaru dari percobaan pertama
+            byep = {d.get("endpoint"): d for d in pushed_cfg.get("devices") or []}
+            cfg["devices"] = [byep.get(d.get("endpoint"), d) for d in cfg.get("devices") or []]
+            cfg["pushlog"] = pushed_cfg.get("pushlog") or cfg.get("pushlog") or []
+        if pushed_cfg is not None:
             files[CONFIG_FILE] = {"content": json.dumps(cfg, indent=1)}
         r = _gh(token, "PATCH", f"/gists/{gid}", json={"files": files})
         if r.ok:
@@ -368,11 +434,9 @@ def jalankan_pengingat(token=None, vapid=None, app_url=None):
         by_ch.setdefault(m["ch"], []).append(prev)
     box = {"messages": ((box.get("messages") or []) + new)[-MAX_MSG:], "updated": _now()}
     cfg["reminders"] = keep
-    dead = set()
     for ch, prevs in by_ch.items():
-        dead |= _push(cfg, prevs, ch, vapid, app_url, any(r.get("prio") == "tinggi" for r in due if (r.get("ch") or "Pengingat") == ch))
-    if dead:
-        cfg["devices"] = [d for d in cfg.get("devices") or [] if d.get("endpoint") not in dead]
+        _push(cfg, prevs, ch, vapid, app_url, any(r.get("prio") == "tinggi" for r in due if (r.get("ch") or "Pengingat") == ch),
+              latest=new[-1]["t"])
     r = _gh(token, "PATCH", f"/gists/{gid}", json={"files": {MSG_FILE: {"content": json.dumps(box, ensure_ascii=False)},
                                                              CONFIG_FILE: {"content": json.dumps(cfg, indent=1)}}})
     if not r.ok:
