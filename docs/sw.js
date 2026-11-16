@@ -1,8 +1,8 @@
 /* Service worker: app shell cache-first, data network-first (fallback cache saat offline) */
-const VERSION = 'v28';
+const VERSION = 'v29';
 const SHELL = `shell-${VERSION}`;
 const DATA = 'data-v1';
-const ASSETS = ['./', 'index.html', 'app.css', 'app.js', 'geo.js', 'quant.js', 'siklus.js', 'term.js', 'makro.js', 'ext.js', 'pesan.js', 'porto.js', 'ipo.js', 'live.js', 'rebal.js', 'aliran.js', 'dunia.js', 'etf.js', 'dca.js', 'pajak.js', 'kekayaan.js', 'terminal.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
+const ASSETS = ['./', 'index.html', 'app.css', 'app.js', 'geo.js', 'quant.js', 'siklus.js', 'term.js', 'makro.js', 'ext.js', 'pesan.js', 'porto.js', 'ipo.js', 'live.js', 'rebal.js', 'aliran.js', 'dunia.js', 'etf.js', 'dca.js', 'pajak.js', 'kekayaan.js', 'rumus.js', 'terminal.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(SHELL).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));

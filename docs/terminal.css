@@ -351,12 +351,12 @@ pre.code { max-width: 100%; }
 .scr-presets { padding-bottom: 6px; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
 .scr-info { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; font-size: 12.5px; color: var(--text-2); margin: 8px 0 2px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid var(--accent); background: var(--surface); }
 .scr-info b { color: var(--text); }
-.scr-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; margin: 12px 0 6px; align-items: stretch; }
+.scr-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; margin: 12px 0 6px; align-items: stretch; }
 .scr-tools .input { margin: 0; }
 .scr-tools .sel { max-width: 230px; height: auto; min-height: 40px; padding: 0 28px 0 10px; }
 .scr-tools .btn { height: auto; }
 @media (max-width: 559px) {
-  .scr-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  .scr-tools { grid-template-columns: minmax(0, 1fr) auto auto; }
   .scr-tools .sel { grid-column: 1 / -1; grid-row: 2; max-width: none; }
 }
 .fchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }

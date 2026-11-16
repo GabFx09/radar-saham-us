@@ -24,7 +24,7 @@ const App = {
 };
 
 function defaultFilters() {
-  return { q: '', preset: 'all', sectors: [], caps: [], ratings: [], minFund: 0, minUpside: -50, maxPE: 0, minROE: 0, minPio: 0, minDiv: 0, minGeo: 0, sort: 'score' };
+  return { q: '', preset: 'all', sectors: [], caps: [], ratings: [], minFund: 0, minUpside: -50, maxPE: 0, minROE: 0, minPio: 0, minDiv: 0, minGeo: 0, rumus: '', rumusSort: '', sort: 'score' };
 }
 
 /* ------------------------------------------------------------ format */
@@ -341,12 +341,14 @@ function activeFilterCount(f) {
   let n = 0;
   if (f.sectors.length) n++; if (f.caps.length) n++; if (f.ratings.length) n++;
   if (f.minFund > 0) n++; if (f.minUpside > -50) n++; if (f.maxPE > 0) n++; if (f.minROE > 0) n++; if (f.minPio > 0) n++; if (f.minDiv > 0) n++; if (f.minGeo > 0) n++;
+  if (f.rumus) n++;
   return n;
 }
 function applyFilters() {
   const f = App.filters;
   const pr = PRESETS.find((p) => p.id === f.preset) || PRESETS[0];
   const q = f.q.trim().toLowerCase();
+  const rm = typeof rumusOf === 'function' ? rumusOf(f.rumus) : null;
   let out = App.data.stocks.filter((s) => {
     if (q && !s.sym.toLowerCase().includes(q) && !s.name.toLowerCase().includes(q)) return false;
     if (!pr.f(s)) return false;
@@ -360,9 +362,10 @@ function applyFilters() {
     if (f.minPio > 0 && (s.m.piotroski == null || s.m.piotroski < f.minPio)) return false;
     if (f.minDiv > 0 && ((s.m.div_yield || 0) * 100 < f.minDiv)) return false;
     if (f.minGeo > 0 && (!s.geo || s.geo.score < f.minGeo)) return false;
+    if (rm && !rm.err && !rm.fn(s)) return false;
     return true;
   });
-  const key = (SORTS[f.sort] || SORTS.score)[1];
+  const key = (f.sort === 'rumus' && !f.rumusSort ? SORTS.score : SORTS[f.sort] || SORTS.score)[1];
   out.sort((a, b) => key(b) - key(a));
   return out;
 }
@@ -415,6 +418,7 @@ function filterChips(f) {
   if (f.minPio > 0) C.push(['minPio', `Piotroski ≥ ${f.minPio}`]);
   if (f.minDiv > 0) C.push(['minDiv', `Dividen ≥ ${f.minDiv}%`]);
   if (f.minGeo > 0) C.push(['minGeo', `Geopolitik ≥ ${f.minGeo}`]);
+  if (f.rumus) C.push(['rumus', `ƒ ${f.rumus.length > 40 ? f.rumus.slice(0, 38) + '…' : f.rumus}`]);
   return C;
 }
 function renderScreener(el) {
@@ -425,12 +429,14 @@ function renderScreener(el) {
     <p class="page-sub">${App.data.stocks.length} saham AS (S&amp;P 500 + MidCap 400) dinilai dari fundamental, valuasi, teknikal, analis &amp; geopolitik. Pilih strategi siap pakai atau atur filter sendiri.</p>
     <div class="mk-label" style="margin:10px 0 4px">Strategi</div>
     <div class="chips scr-presets" id="presetChips">${PRESETS.map((p) => `<button class="chip ${p.id === f.preset ? 'active' : ''}" data-p="${p.id}">${esc(p.name)}</button>`).join('')}</div>
+    ${typeof myScreenChips === 'function' ? myScreenChips() : ''}
     ${pr.id !== 'all' ? `<div class="scr-info"><div><b>${esc(pr.name)}</b> — ${esc(pr.desc)}</div><button class="cmp-x" id="presetClear" title="Kembali ke Semua">✕</button></div>` : ''}
     <div class="scr-tools">
       <label class="input"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
         <input id="q" type="search" placeholder="Cari ticker / nama" value="${esc(f.q)}" autocomplete="off"></label>
-      <select class="sel" id="sort" aria-label="Urutkan" title="Urutkan">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}" ${k === f.sort ? 'selected' : ''}>↓ ${v[0]}</option>`).join('')}</select>
+      <select class="sel" id="sort" aria-label="Urutkan" title="Urutkan">${Object.entries(SORTS).filter(([k]) => k !== 'rumus' || f.rumusSort).map(([k, v]) => `<option value="${k}" ${k === f.sort ? 'selected' : ''}>↓ ${v[0]}</option>`).join('')}</select>
       <button class="btn" id="openFilter"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filter${activeFilterCount(f) ? ` <span class="dot">${activeFilterCount(f)}</span>` : ''}</button>
+      <button class="btn${f.rumus ? ' primary' : ''}" id="openRumus" title="Screener dengan rumus sendiri">ƒ Rumus</button>
     </div>
     <div class="fchips" id="fchips"></div>
     <div class="rcounts" id="rcounts"></div>
@@ -487,12 +493,15 @@ function renderScreener(el) {
     if (k === '__all') { App.filters = Object.assign(d, { preset: f.preset, sort: f.sort }); }
     else if (k.includes(':')) { const [a, v] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)]; f[a] = f[a].filter((x) => x !== v); }
     else f[k] = d[k];
+    if (k === 'rumus') { f.rumusSort = ''; if (f.sort === 'rumus') f.sort = 'score'; }
     App.shown = 50; saveFilters(); renderScreener(el);
   };
   let qt;
   $('#q').oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { f.q = e.target.value; App.shown = 50; saveFilters(); draw(); }, 150); };
   $('#sort').onchange = (e) => { f.sort = e.target.value; saveFilters(); draw(); };
   $('#openFilter').onclick = () => openFilterSheet(() => renderScreener(el));
+  $('#openRumus').onclick = () => openRumusSheet(() => renderScreener(el));
+  if (typeof bindMyChips === 'function') bindMyChips(() => renderScreener(el));
 }
 
 function openFilterSheet(onApply) {
