@@ -32,6 +32,7 @@ function recordSale(sym, q, p, d) {
   if (!(q > 0) || !(p > 0)) return false;
   const r = { h, qty: q0, cost: Number(h.cost) || null };
   const B = typeof brokerCfg === 'function' ? brokerCfg() : { fee: 0 };
+  if (!h.lots && h.cost && h.date && q0) h.lots = [{ d: h.date, q: q0, c: Number(h.cost) }]; // posisi awal ikut tercatat di riwayat
   const left = Math.round((q0 - q) * 10000) / 10000;
   const sale = { sym, q, p, d, cost: r.cost, costIdr: costIdrPerShare(r), kurs: kursAt(d) || idrNow().v, fee: Math.round(q * p * B.fee * 100) / 100, id: Date.now() };
   if (left <= 1e-6) sale.hb = JSON.parse(JSON.stringify(h)); // posisi ditutup: simpan salinan agar bisa dibatalkan

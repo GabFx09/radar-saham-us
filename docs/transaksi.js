@@ -96,7 +96,17 @@ function openTrade(sym, mode, el) {
 /** riwayat transaksi: pembelian (catatan per transaksi) + penjualan */
 function txHistoryCard() {
   const T = [];
-  App.holdings.forEach((h) => (Array.isArray(h.lots) ? h.lots : []).forEach((l) => T.push({ k: 'buy', sym: h.sym, d: l.d, q: l.o ?? l.q, p: l.c })));
+  App.holdings.forEach((h) => {
+    if (Array.isArray(h.lots) && h.lots.length) h.lots.forEach((l) => T.push({ k: 'buy', sym: h.sym, d: l.d, q: l.o ?? l.q, p: l.c }));
+    else if (h.cost && h.date) T.push({ k: 'buy', sym: h.sym, d: h.date, q: Number(h.qty) || 0, p: Number(h.cost) }); // posisi awal (diisi manual)
+  });
+  // saham yang sudah dijual habis: pembeliannya diambil dari salinan saat posisi ditutup
+  (App.sales || []).forEach((s) => {
+    const hb = s.hb;
+    if (!hb || App.holdings.some((h) => h.sym === s.sym)) return;
+    const L = Array.isArray(hb.lots) && hb.lots.length ? hb.lots : (hb.cost && hb.date ? [{ d: hb.date, q: hb.qty, c: hb.cost }] : []);
+    L.forEach((l) => T.push({ k: 'buy', sym: s.sym, d: l.d, q: l.o ?? l.q, p: l.c }));
+  });
   (App.sales || []).forEach((s, i) => T.push({ k: 'sell', sym: s.sym, d: s.d, q: s.q, p: s.p, i, pl: s.cost ? s.q * (s.p - s.cost) - (s.fee || 0) : null, id: s.id || 0 }));
   if (!T.length) return '';
   T.sort((a, b) => (b.d || '').localeCompare(a.d || '') || (b.id || 0) - (a.id || 0) || (a.k === 'sell' ? -1 : 1));
@@ -109,7 +119,7 @@ function txHistoryCard() {
     <div class="section-head" style="margin-bottom:6px;align-items:center"><h3 class="card-title" style="margin:0">Riwayat transaksi</h3>${(App.sales || []).length ? `<span class="small">Untung/rugi terealisasi <b class="${cls(realized)}">${realized >= 0 ? '+' : '−'}${fmt.usd(Math.abs(realized), 2)}</b></span>` : ''}</div>
     ${first.map(row).join('')}
     ${rest.length ? `<details><summary class="small">Tampilkan ${rest.length} transaksi lainnya</summary>${rest.map(row).join('')}</details>` : ''}
-    <p class="small faint" style="margin:6px 0 0">Pembelian yang dimasukkan lewat ✎ Ubah data tidak tercatat di sini. ↶ membatalkan penjualan dan mengembalikan lembarnya.</p>
+    <p class="small faint" style="margin:6px 0 0">Isi transaksi lama berurutan dari yang paling awal agar harga rata-rata benar. ✎ Ubah data mengganti catatan pembelian per transaksi dengan satu angka rata-rata. ↶ membatalkan penjualan dan mengembalikan lembarnya.</p>
   </div>`;
 }
 function bindTx(el) {
