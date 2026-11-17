@@ -609,3 +609,6 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .tx-m { flex: 1; min-width: 0; }
 .tx-r { flex: none; display: inline-flex; gap: 8px; align-items: center; }
 .tx-cash { display: flex; gap: 6px; align-items: center; margin: 10px 0 0; font-size: 13px; }
+.nobrk { display: inline-block; margin-top: 4px; border: 1px dashed var(--border); background: transparent; color: var(--text-3); font-size: 11px; padding: 2px 7px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.nobrk:hover { color: var(--down); border-color: var(--down); }
+.nobrk.on { border-style: solid; color: var(--text-2); }

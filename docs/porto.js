@@ -231,6 +231,7 @@ function renderPorto(el) {
   $$('[data-edit]').forEach((b) => { b.onclick = () => (typeof openTrade === 'function' ? openTrade(b.dataset.edit, 'edit', el) : editHolding(b.dataset.edit, el)); });
   if (typeof bindTx === 'function') bindTx(el);
   if (typeof bindCash === 'function') bindCash(rows, el);
+  if (typeof bindNoBrk === 'function') bindNoBrk(el);
   if (typeof bindRebalance === 'function') bindRebalance(rows, el);
   if (typeof bindProfile === 'function') bindProfile(el);
   if (typeof bindCore === 'function') bindCore(el);

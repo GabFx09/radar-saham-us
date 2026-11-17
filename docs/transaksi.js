@@ -168,7 +168,7 @@ function cashCard(rows, stockVal) {
     ${T ? `<p class="small" style="margin:0 0 8px">🌍 <a class="link" href="#/dunia">Waktu masuk <b style="color:${timingColor(T.label)}">${T.label}</b></a> (skor ${Math.round(T.score)}) — ${frac < 1 ? `pakai ${Math.round(frac * 100)}% saldo dulu, sisanya masuk bertahap tiap 2–4 minggu atau saat skor naik.` : 'kondisi mendukung untuk memakai saldo.'} <label class="chk" style="display:inline-flex"><input type="checkbox" id="cashAll" ${all ? 'checked' : ''}> pakai semua saldo</label></p>` : ''}
     ${P && P.orders.length ? `<div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th class="r">Beli</th><th class="r">Lembar</th><th class="r">Bobot</th></tr>
-      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${o.s.etf ? '' : ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector || '')} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div></td>
+      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${o.s.etf ? '' : ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector || '')} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div>${o.held || typeof noBrkBtn !== 'function' ? '' : noBrkBtn(o.s.sym)}</td>
         <td class="r mono"><b>${fmt.usd(o.cost + o.fee, 2)}</b></td>
         <td class="r mono">${fq(o.sh)}</td>
         <td class="r mono">${Math.round(o.wAfter * 100)}%<div class="faint small">target ${Math.round(o.wT * 100)}%</div></td></tr>`).join('')}
@@ -176,7 +176,8 @@ function cashCard(rows, stockVal) {
     <p class="small" style="margin:8px 0 0">Total ${fmt.usd(P.orders.reduce((a, o) => a + o.cost + o.fee, 0), 2)} (biaya ${fmt.usd(P.feeTot, 2)})${P.left > 0.5 ? ` · sisa ${fmt.usd(P.left, 2)}` : ''}. Dipilih dari saham yang porsinya paling kurang menurut target profil${PF ? ` <b>${PF.ico} ${PF.n}</b>` : ''} — rekomendasi model, nilai wajar, dan batas bobot ikut diperhitungkan; saham bersaran JUAL tidak ditambah.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn primary" id="cashRec">✓ Sudah dibeli — catat &amp; potong saldo</button></div>`
     : `<p class="small muted">${use < 1 ? 'Saldo terlalu kecil untuk dibelikan.' : 'Belum ada saham yang perlu dibeli — semua sudah di atas target.'}</p>`}` : C.set ? '<p class="small muted" style="margin:8px 0 0">Saldo kosong. Saat Anda menjual saham, hasilnya otomatis masuk ke sini.</p>' : ''}
-    <p class="small faint" style="margin:8px 0 0">Rekomendasi dari data model, bukan perintah beli. Harga bergerak — di aplikasi broker beli sesuai <b>nominal dolar</b>.</p>
+    ${typeof noBrkManage === 'function' ? noBrkManage() : ''}
+    <p class="small faint" style="margin:8px 0 0">Saham yang tidak ada di ${esc(brokerCfg().n)}? Ketuk <b>✕ tidak ada di ${esc(brokerCfg().n)}</b> — tidak akan direkomendasikan lagi dan langsung diganti. Rekomendasi dari data model, bukan perintah beli. Harga bergerak — di aplikasi broker beli sesuai <b>nominal dolar</b>.</p>
   </div>`;
 }
 function bindCash(rows, el) {

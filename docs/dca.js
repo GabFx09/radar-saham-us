@@ -10,6 +10,25 @@ const BROKER_DEF = {
   n: 'Pluang', fee: 0.003, fx: 0.005, tax: 0.15, frac: true, min: 1,
 };
 function brokerCfg() { return Object.assign({}, BROKER_DEF, (App.notify && App.notify.broker) || {}); }
+/* saham yang tidak tersedia di broker (ditandai pengguna) — tidak direkomendasikan di mana pun */
+function noBrkList() { return Array.isArray(App.notify && App.notify.noBroker) ? App.notify.noBroker : []; }
+function brokerHas(sym) { return !noBrkList().includes(sym); }
+function noBrkBtn(sym) { return `<button class="nobrk" data-nobrk="${esc(sym)}" title="Sembunyikan dari rekomendasi">✕ tidak ada di ${esc(brokerCfg().n)}</button>`; }
+function setNoBrk(sym, off) {
+  const L = noBrkList().filter((x) => x !== sym);
+  if (off) L.push(sym);
+  setNotifyKey('noBroker', L);
+}
+function noBrkManage() {
+  const L = noBrkList();
+  if (!L.length) return '';
+  return `<p class="small faint" style="margin:8px 0 0">Tidak ada di ${esc(brokerCfg().n)} (tidak direkomendasikan): ${L.map((x) => `<button class="nobrk on" data-yesbrk="${esc(x)}" title="Ternyata ada — tampilkan lagi">${esc(x)} ↺</button>`).join(' ')}</p>`;
+}
+function bindNoBrk(el) {
+  const rerender = () => { const y = window.scrollY; renderPorto(el); window.scrollTo(0, y); };
+  $$('[data-nobrk]').forEach((b) => { b.onclick = (e) => { e.preventDefault(); setNoBrk(b.dataset.nobrk, true); toast(`${b.dataset.nobrk} disembunyikan — diganti kandidat berikutnya`); rerender(); }; });
+  $$('[data-yesbrk]').forEach((b) => { b.onclick = (e) => { e.preventDefault(); setNoBrk(b.dataset.yesbrk, false); toast(`${b.dataset.yesbrk} direkomendasikan lagi`); rerender(); }; });
+}
 function dcaCfg() { return Object.assign({ on: false, amt: 2000000, day: 1 }, (App.notify && App.notify.dca) || {}); }
 function setNotifyKey(k, v) {
   App.notify[k] = v;
@@ -110,7 +129,7 @@ function dcaCard(rows, valUsd) {
     ${P.efPart ? `<p class="small warn" style="margin:0 0 8px">🛟 Dana darurat belum cukup — sisihkan <b>${rp(P.efPart)}</b> ke tabungan/RDPU dulu; sisanya ${rp(D.amt - P.efPart)} untuk saham di bawah. <a class="link" href="#/portofolio?t=keuangan" onclick="portoGo('keuangan','wealthCard');return false">atur</a></p>` : ''}
     ${P.orders.length ? `<div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th class="r">Beli</th><th class="r">Lembar</th><th class="r">Bobot</th></tr>
-      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div></td>
+      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div>${o.held ? '' : noBrkBtn(o.s.sym)}</td>
         <td class="r mono"><b>${rp((o.cost + o.fee) / (1 - B.fx) * P.K.v)}</b><div class="faint small">${fmt.usd(o.cost + o.fee, 2)}</div></td>
         <td class="r mono">${o.sh.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
         <td class="r mono">${Math.round(o.wAfter * 100)}%<div class="faint small">target ${Math.round(o.wT * 100)}%</div></td></tr>`).join('')}

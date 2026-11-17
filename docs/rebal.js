@@ -49,6 +49,7 @@ function candidateQuality(s) {
 }
 /** Saham yang layak jadi kandidat beli untuk profil aktif. */
 function profileEligible(s) {
+  if (typeof brokerHas === 'function' && !brokerHas(s.sym)) return false; // ditandai tidak tersedia di broker
   if (!(s.rating === 'STRONG BUY' || s.rating === 'BUY') || !s.val) return false;
   const P = profileKey(), conf = s.val.confidence, mc = (s.q && s.q.mc) || {}, vol = (s.q && s.q.vol) || 0.35;
   if (P === 'agresif') return (mc.p_loss20 || 0) < (conf === 'Rendah' ? 0.35 : 0.45); // risiko besar boleh, tapi bukan setengah peluang jatuh 20%
@@ -82,7 +83,7 @@ function profileCard() {
     </div>
     <div class="mk-label">Rekomendasi teratas untuk profil ${P.n} (selain yang sudah Anda miliki)</div>
     <div class="cmp-scroll"><table class="hold-table"><tr><th>Saham</th><th class="r">Potensi</th><th class="r">Pertumbuhan</th><th class="r">Volatilitas</th><th class="r">Risiko turun 20%</th><th class="r">Aliran dana</th></tr>
-      ${picks.map((s) => { const mc = (s.q && s.q.mc) || {}; return `<tr><td><a href="#/s/${encodeURIComponent(s.sym)}"><b>${esc(s.sym)}</b></a> ${ratingBadge(s.rating)}<div class="faint small">${esc(s.sector)} · ${fmt.usd(s.price)} · keyakinan ${esc((s.val || {}).confidence || '–')}</div></td>
+      ${picks.map((s) => { const mc = (s.q && s.q.mc) || {}; return `<tr><td><a href="#/s/${encodeURIComponent(s.sym)}"><b>${esc(s.sym)}</b></a> ${ratingBadge(s.rating)}<div class="faint small">${esc(s.sector)} · ${fmt.usd(s.price)} · keyakinan ${esc((s.val || {}).confidence || '–')}</div>${typeof noBrkBtn === 'function' ? noBrkBtn(s.sym) : ''}</td>
         <td class="r mono ${cls(s.val.upside)}">${fmt.pct(s.val.upside, 0)}</td><td class="r mono">${Math.round(s.pillars.growth)}</td>
         <td class="r mono">${s.q && s.q.vol ? Math.round(s.q.vol * 100) + '%' : '–'}</td><td class="r mono ${(mc.p_loss20 || 0) >= 0.35 ? 'down' : ''}">${mc.p_loss20 != null ? Math.round(mc.p_loss20 * 100) + '%' : '–'}</td>
         <td class="r mono" style="color:${scoreColor(s.flow ?? 50)}">${s.flow != null ? Math.round(s.flow) : '–'}</td></tr>`; }).join('')}
@@ -264,7 +265,7 @@ function rebalanceCard(rows) {
     ${R.cost.nTrades ? `<p class="small" style="margin:0 0 8px">💸 Perkiraan biaya ${esc(R.cost.B.n)}: <b>${fmt.usd(R.cost.fees, 2)}</b> (${R.cost.nTrades} transaksi senilai ${fmt.usd(R.cost.traded, 0)} × ${(R.cost.B.fee * 100).toLocaleString('id-ID')}%${o.cash ? ` + kurs ${(R.cost.B.fx * 100).toLocaleString('id-ID')}% untuk dana tambahan` : ''})${R.cost.realized > 1 ? ` · penjualan merealisasi untung ±<b>${fmt.usd(R.cost.realized, 0)}</b> (catat untuk SPT Tahunan)` : ''}.${R.cost.sellAmt > 0 ? ` Ingin tanpa menjual? <a class="link" href="#/portofolio?t=rencana" onclick="portoGo('rencana','dcaCard');return false">Rencana DCA</a> menyeimbangkan pelan-pelan lewat pembelian baru.` : ''}</p>` : ''}
     <div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th>Aksi</th><th class="r">Sekarang</th><th class="r">Target</th><th class="r">Selisih</th><th class="r">Lembar</th></tr>
-      ${R.plan.map((p) => `<tr class="${p.act === 'Biarkan' ? 'faint' : ''}"><td><a href="#/s/${encodeURIComponent(p.s.sym)}"><b>${esc(p.s.sym)}</b></a> ${ratingBadge(p.s.rating)}<div class="faint small">${esc(p.s.sector)} · ${fmt.usd(p.s.price)}${p.s.etf ? ' · inti' : ` · potensi ${fmt.pct(p.s.val ? p.s.val.upside : null, 0)}`}${p.st && p.st.k !== 'hold' ? ` · 🌍 ${STANCE[p.st.k].n}` : ''}</div></td>
+      ${R.plan.map((p) => `<tr class="${p.act === 'Biarkan' ? 'faint' : ''}"><td><a href="#/s/${encodeURIComponent(p.s.sym)}"><b>${esc(p.s.sym)}</b></a> ${ratingBadge(p.s.rating)}<div class="faint small">${esc(p.s.sector)} · ${fmt.usd(p.s.price)}${p.s.etf ? ' · inti' : ` · potensi ${fmt.pct(p.s.val ? p.s.val.upside : null, 0)}`}${p.st && p.st.k !== 'hold' ? ` · 🌍 ${STANCE[p.st.k].n}` : ''}</div>${p.act === 'Beli baru' && !p.s.etf && typeof noBrkBtn === 'function' ? noBrkBtn(p.s.sym) : ''}</td>
         <td><b class="${p.act === 'Beli baru' || p.act === 'Tambah' ? 'up' : p.act === 'Biarkan' ? 'muted' : 'down'}">${p.act}</b></td>
         <td class="r mono">${Math.round(p.cw * 100)}%</td><td class="r mono"><b>${Math.round(p.w * 100)}%</b></td>
         <td class="r mono ${cls(p.dv)}">${p.dv >= 0 ? '+' : '−'}${fmt.usd(Math.abs(p.dv), 0)}</td><td class="r mono">${shTxt(p)}</td></tr>`).join('')}
