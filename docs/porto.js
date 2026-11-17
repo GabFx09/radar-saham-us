@@ -141,13 +141,15 @@ function renderPorto(el) {
   let tab = qt || store.get('portoTab', 'ringkasan');
   if (!PORTO_TABS.some(([k]) => k === tab)) tab = 'ringkasan';
   store.set('portoTab', tab);
+  const cash = typeof cashCfg === 'function' ? cashCfg().usd : 0;
   const nWarn = rows.filter((r) => r.adv.act === 'JUAL' || r.adv.act === 'KURANGI').length;
   el.innerHTML = `<div class="fade-in">
     ${wlTabs('porto')}
     <h1 class="page-title">Portofolio</h1>
     <p class="page-sub">Saham yang Anda miliki — untung/rugi, risiko, dan sinyal model. ${App.cloud && App.cloud.gistId ? '☁ tersinkron & dipantau notifikasi' : 'Tersimpan di perangkat ini · <a class="link" href="#/pengaturan">hubungkan cloud</a> agar dipantau notifikasi'}.</p>
-    ${rows.length ? `<div class="cyc-now" style="margin-bottom:12px">
-      <div><div class="l">Nilai pasar</div><div class="v">${fmt.usd(tot.val, 0)}</div><div class="s">${idr ? 'Rp ' + Math.round(tot.val * idr).toLocaleString('id-ID') : ''}</div></div>
+    ${rows.length || cash > 0 ? `<div class="cyc-now" style="margin-bottom:12px">
+      ${cash > 0 ? `<div><div class="l">Total portofolio</div><div class="v">${fmt.usd(tot.val + cash, 0)}</div><div class="s">${idr ? 'Rp ' + Math.round((tot.val + cash) * idr).toLocaleString('id-ID') + ' · ' : ''}saham ${fmt.usd(tot.val, 0)} + <a class="link" href="#/portofolio?t=ringkasan" onclick="portoGo('ringkasan','cashCard');return false">saldo ${fmt.usd(cash, 0)}</a></div></div>`
+    : `<div><div class="l">Nilai pasar</div><div class="v">${fmt.usd(tot.val, 0)}</div><div class="s">${idr ? 'Rp ' + Math.round(tot.val * idr).toLocaleString('id-ID') : ''}</div></div>`}
       <div><div class="l">Hari ini</div><div class="v ${cls(tot.day)}">${tot.day >= 0 ? '+' : '−'}${fmt.usd(Math.abs(tot.day), 0)}</div><div class="s">${fmt.pct(tot.val ? tot.day / (tot.val - tot.day) : null, 2)}</div></div>
       <div><div class="l">Untung/rugi total</div><div class="v ${cls(plTot)}">${plTot == null ? '–' : (plTot >= 0 ? '+' : '−') + fmt.usd(Math.abs(plTot), 0)}</div><div class="s">${plTot == null ? 'isi harga beli' : fmt.pct(plTot / tot.basis, 1)}</div></div>
       <div><div class="l">Dividen / tahun</div><div class="v">${fmt.usd(divInc, 0)}</div><div class="s">yield ${fmt.pct(tot.val ? divInc / tot.val : null, 2, false)}${divInc && typeof brokerCfg === 'function' ? ` · bersih ${fmt.usd(divInc * (1 - brokerCfg().tax), 0)} stl pajak ${Math.round(brokerCfg().tax * 100)}%` : ''}</div></div>
@@ -174,6 +176,7 @@ function renderPorto(el) {
       <datalist id="pSyms">${App.data.stocks.concat(App.etfs || []).map((s) => `<option value="${esc(s.sym)}">${esc(s.name)}</option>`).join('')}</datalist>
       ${rows.length && typeof openTrade === 'function' ? '<p class="small faint" style="margin:6px 0 0">Sudah punya sahamnya? Pakai tombol <b>Beli</b> / <b>Jual</b> di tabel — harga rata-rata, untung/rugi, dan catatan SPT ikut diperbarui.</p>' : ''}
     </div>
+    ${typeof cashCard === 'function' ? cashCard(rows, tot.val) : ''}
     ${typeof txHistoryCard === 'function' ? txHistoryCard() : ''}
     ${rows.length ? `<div class="card card-pad" style="margin-top:12px">
       <div class="section-head" style="margin-bottom:8px;align-items:center"><h3 class="card-title" style="margin:0">Penasihat Portofolio</h3><button class="btn" id="pCopy">Salin untuk analisis</button></div>
@@ -192,7 +195,7 @@ function renderPorto(el) {
     ${typeof coreCard === 'function' ? coreCard() : ''}` : ''}
     ${tab === 'keuangan' ? `
     ${typeof wealthCard === 'function' ? wealthCard(tot.val) : ''}
-    ${typeof goalCard === 'function' ? goalCard(tot.val) : ''}
+    ${typeof goalCard === 'function' ? goalCard(tot.val + cash) : ''}
     ${typeof sptCard === 'function' ? sptCard(rows) : '<div class="card card-pad">–</div>'}` : ''}
     ${tab === 'analisis' ? (rows.length ? `
     ${idrCard(tot.val, expRet, idr)}
@@ -227,6 +230,7 @@ function renderPorto(el) {
   };
   $$('[data-edit]').forEach((b) => { b.onclick = () => (typeof openTrade === 'function' ? openTrade(b.dataset.edit, 'edit', el) : editHolding(b.dataset.edit, el)); });
   if (typeof bindTx === 'function') bindTx(el);
+  if (typeof bindCash === 'function') bindCash(rows, el);
   if (typeof bindRebalance === 'function') bindRebalance(rows, el);
   if (typeof bindProfile === 'function') bindProfile(el);
   if (typeof bindCore === 'function') bindCore(el);

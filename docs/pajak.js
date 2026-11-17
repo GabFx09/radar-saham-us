@@ -58,6 +58,7 @@ function undoSale(i) {
     h.qty = nq;
   } else if (s.hb) App.holdings.push(s.hb);
   else App.holdings.push({ sym: s.sym, qty: s.q, cost: s.cost || null, date: s.d });
+  if (s.cashAdj && typeof adjCash === 'function') adjCash(-s.cashAdj); // hasil jual yang tadi masuk saldo ditarik lagi
   App.sales.splice(i, 1);
   saveSales();
   saveHoldings();

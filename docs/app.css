@@ -608,3 +608,4 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .tx-k.sell { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
 .tx-m { flex: 1; min-width: 0; }
 .tx-r { flex: none; display: inline-flex; gap: 8px; align-items: center; }
+.tx-cash { display: flex; gap: 6px; align-items: center; margin: 10px 0 0; font-size: 13px; }

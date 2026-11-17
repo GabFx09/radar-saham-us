@@ -36,6 +36,15 @@ function dcaPlan(rows) {
   const fxCost = gross * B.fx;
   const usd = gross - fxCost;
   if (!(usd > 0)) return null;
+  const P = buyPlan(rows, usd);
+  if (!P) return null;
+  return Object.assign({ D, B, K, efPart, gross, fxCost, usd }, P);
+}
+
+/** rencana beli dari dana USD: hanya membeli saham yang porsinya masih kurang menurut target profil */
+function buyPlan(rows, usd) {
+  const B = brokerCfg();
+  if (!(usd > 0) || typeof computeRebalance !== 'function') return null;
   // target alokasi = hasil rebalancing (profil risiko) dengan dana baru; DCA hanya MEMBELI yang porsinya kurang
   const R = computeRebalance(rows, Object.assign({}, rebOpts(), { cash: usd, regime: false }));
   if (!R) return null;
@@ -68,7 +77,7 @@ function dcaPlan(rows) {
   const maxAfter = rows.length || orders.length
     ? Math.max(...rows.map((r) => (r.val + (orders.find((o) => o.s.sym === r.s.sym) || { cost: 0 }).cost) / after), ...orders.map((o) => o.wAfter))
     : 0;
-  return { D, B, K, efPart, gross, fxCost, usd, feeTot, left, orders, R, maxBefore, maxAfter };
+  return { feeTot, left, orders, R, maxBefore, maxAfter };
 }
 
 function fvMonthly(pv, pmt, rYear, years) {
