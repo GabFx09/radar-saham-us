@@ -273,7 +273,7 @@ def _push(cfg, previews, saluran, vapid, app_url, urgent, latest=None):
             print(f"kabar: push ke {name} ditolak (HTTP {code})", file=sys.stderr)
         except Exception as e:  # noqa: BLE001
             print(f"kabar: push ke {name} gagal: {e}", file=sys.stderr)
-        log.append({"t": _now(), "dev": name, "code": code, "ch": saluran})
+        log.append({"t": _now(), "dev": name, "ep": d["endpoint"][-6:], "code": code, "ch": saluran})
         if code in (404, 410):
             d["fail"] = int(d.get("fail") or 0) + 1
             d.setdefault("failAt", _now())

@@ -158,11 +158,11 @@ function renderPorto(el) {
       <h3 class="card-title">Kepemilikan (${rows.length})</h3>
       ${rows.length ? `<div class="cmp-scroll"><table class="hold-table">
         <tr><th>Saham</th><th>Saran</th><th class="r">Lembar</th><th class="r">Harga beli</th><th class="r">Nilai</th><th class="r">U/R</th><th class="r">Bobot</th><th></th></tr>
-        ${rows.sort((a, b) => b.val - a.val).map((r) => `<tr><td><a href="#/s/${encodeURIComponent(r.s.sym)}"><b>${esc(r.s.sym)}</b></a> ${ratingBadge(r.s.rating)}<div class="faint small">${fmt.usd(r.s.price)} · ${fmt.pct(r.s.chg1d, 1)} · proyeksi ${fmt.pct(r.s.val ? r.s.val.upside : null, 0)}</div></td>
+        ${rows.sort((a, b) => b.val - a.val).map((r) => `<tr><td><a href="#/s/${encodeURIComponent(r.s.sym)}"><b>${esc(r.s.sym)}</b></a> ${ratingBadge(r.s.rating)}<div class="faint small">${fmt.usd(r.s.price)} · ${fmt.pct(r.s.chg1d, 1)} · proyeksi ${fmt.pct(r.s.val ? r.s.val.upside : null, 0)}</div>${typeof openTrade === 'function' ? `<div class="tx-btns"><button class="tx-b buy" data-trade="buy:${esc(r.h.sym)}" title="Beli tambah">+ Beli</button><button class="tx-b sell" data-trade="sell:${esc(r.h.sym)}" title="Jual sebagian/semua">− Jual</button></div>` : ''}</td>
           <td>${actBadge(r.adv.act)}</td>
-          <td class="r mono">${r.qty.toLocaleString('en-US')}</td><td class="r mono">${r.cost ? fmt.usd(r.cost) : '–'}</td><td class="r mono">${fmt.usd(r.val, 0)}</td>
+          <td class="r mono">${r.qty.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td><td class="r mono">${r.cost ? fmt.usd(r.cost) : '–'}</td><td class="r mono">${fmt.usd(r.val, 0)}</td>
           <td class="r mono ${cls(r.pl)}">${r.pl == null ? '–' : fmt.pct(r.plp, 1)}<div class="small">${r.pl == null ? '' : (r.pl >= 0 ? '+' : '−') + fmt.usd(Math.abs(r.pl), 0)}</div></td>
-          <td class="r mono">${Math.round(w(r) * 100)}%</td><td class="r"><button class="cmp-x" data-edit="${esc(r.h.sym)}" title="Ubah">✎</button></td></tr>`).join('')}
+          <td class="r mono">${Math.round(w(r) * 100)}%</td><td class="r"><button class="cmp-x" data-edit="${esc(r.h.sym)}" title="Ubah data">✎</button></td></tr>`).join('')}
       </table></div>` : '<p class="small muted">Belum ada saham. Tambahkan di bawah — mis. <b>NVDA</b>, 10 lembar, harga beli $150.</p>'}
       <form class="porto-add" id="pAdd" autocomplete="off">
         <input id="pSym" placeholder="Ticker" list="pSyms" required>
@@ -172,7 +172,9 @@ function renderPorto(el) {
         <button class="btn primary">+ Tambah</button>
       </form>
       <datalist id="pSyms">${App.data.stocks.concat(App.etfs || []).map((s) => `<option value="${esc(s.sym)}">${esc(s.name)}</option>`).join('')}</datalist>
+      ${rows.length && typeof openTrade === 'function' ? '<p class="small faint" style="margin:6px 0 0">Sudah punya sahamnya? Pakai tombol <b>Beli</b> / <b>Jual</b> di tabel — harga rata-rata, untung/rugi, dan catatan SPT ikut diperbarui.</p>' : ''}
     </div>
+    ${typeof txHistoryCard === 'function' ? txHistoryCard() : ''}
     ${rows.length ? `<div class="card card-pad" style="margin-top:12px">
       <div class="section-head" style="margin-bottom:8px;align-items:center"><h3 class="card-title" style="margin:0">Penasihat Portofolio</h3><button class="btn" id="pCopy">Salin untuk analisis</button></div>
       <p class="small muted" style="margin:0 0 10px">Saran dari data aplikasi: rekomendasi &amp; nilai wajar model, perubahan fundamental sejak dibeli, trailing stop berbasis volatilitas, risiko simulasi, dan bobot portofolio. Diperbarui setiap update data harian.</p>
@@ -223,7 +225,8 @@ function renderPorto(el) {
     toast(`${sym} ditambahkan`);
     renderPorto(el);
   };
-  $$('[data-edit]').forEach((b) => { b.onclick = () => editHolding(b.dataset.edit, el); });
+  $$('[data-edit]').forEach((b) => { b.onclick = () => (typeof openTrade === 'function' ? openTrade(b.dataset.edit, 'edit', el) : editHolding(b.dataset.edit, el)); });
+  if (typeof bindTx === 'function') bindTx(el);
   if (typeof bindRebalance === 'function') bindRebalance(rows, el);
   if (typeof bindProfile === 'function') bindProfile(el);
   if (typeof bindCore === 'function') bindCore(el);

@@ -32,13 +32,35 @@ function recordSale(sym, q, p, d) {
   if (!(q > 0) || !(p > 0)) return false;
   const r = { h, qty: q0, cost: Number(h.cost) || null };
   const B = typeof brokerCfg === 'function' ? brokerCfg() : { fee: 0 };
-  App.sales.push({ sym, q, p, d, cost: r.cost, costIdr: costIdrPerShare(r), kurs: kursAt(d) || idrNow().v, fee: Math.round(q * p * B.fee * 100) / 100 });
   const left = Math.round((q0 - q) * 10000) / 10000;
-  if (h.lots) h.lots = h.lots.map((l) => ({ ...l, q: Math.round(l.q * (left / q0) * 10000) / 10000 })).filter((l) => l.q > 0);
+  const sale = { sym, q, p, d, cost: r.cost, costIdr: costIdrPerShare(r), kurs: kursAt(d) || idrNow().v, fee: Math.round(q * p * B.fee * 100) / 100, id: Date.now() };
+  if (left <= 1e-6) sale.hb = JSON.parse(JSON.stringify(h)); // posisi ditutup: simpan salinan agar bisa dibatalkan
+  App.sales.push(sale);
+  if (h.lots) h.lots = h.lots.map((l) => ({ ...l, o: l.o ?? l.q, q: Math.round(l.q * (left / q0) * 10000) / 10000 })).filter((l) => l.q > 0);
   h.qty = left;
   if (left <= 1e-6) App.holdings = App.holdings.filter((x) => x !== h);
   saveSales();
   saveHoldings();
+  return true;
+}
+
+/** batalkan catatan penjualan: lembar dikembalikan ke portofolio */
+function undoSale(i) {
+  const s = App.sales[i];
+  if (!s || !confirm(`Batalkan penjualan ${s.sym} ${s.q} lembar (${s.d})? Lembarnya dikembalikan ke portofolio.`)) return false;
+  const h = App.holdings.find((x) => x.sym === s.sym);
+  if (h) {
+    const q0 = Number(h.qty) || 0, nq = Math.round((q0 + s.q) * 10000) / 10000;
+    if (h.lots && q0) h.lots = h.lots.map((l) => ({ ...l, q: Math.round(l.q * (nq / q0) * 10000) / 10000 }));
+    if (s.cost && h.cost) h.cost = (q0 * h.cost + s.q * s.cost) / nq;
+    else if (s.cost && !h.cost) h.cost = s.cost;
+    h.qty = nq;
+  } else if (s.hb) App.holdings.push(s.hb);
+  else App.holdings.push({ sym: s.sym, qty: s.q, cost: s.cost || null, date: s.d });
+  App.sales.splice(i, 1);
+  saveSales();
+  saveHoldings();
+  toast('Penjualan dibatalkan');
   return true;
 }
 
@@ -135,11 +157,7 @@ function bindSpt(rows, el) {
     App.notify.tax = t; store.set('notify', App.notify); if (typeof cloudChanged === 'function') cloudChanged();
     rerender();
   };
-  $$('[data-delsale]').forEach((b) => { b.onclick = () => {
-    const i = +b.dataset.delsale;
-    if (i < 0 || !confirm('Hapus catatan penjualan ini? (jumlah lembar di portofolio tidak dikembalikan)')) return;
-    App.sales.splice(i, 1); saveSales(); rerender();
-  }; });
+  $$('[data-delsale]').forEach((b) => { b.onclick = () => { if (undoSale(+b.dataset.delsale)) rerender(); }; });
   $('#sptCopy').onclick = async () => {
     const D = sptData(rows, taxYear());
     const L = [`Ringkasan SPT ${D.Y} — saham AS (${(brokerCfg().n)})`, 'A. Harta (harga perolehan):']
