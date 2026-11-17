@@ -129,13 +129,13 @@ function dcaCard(rows, valUsd) {
     ${P.efPart ? `<p class="small warn" style="margin:0 0 8px">🛟 Dana darurat belum cukup — sisihkan <b>${rp(P.efPart)}</b> ke tabungan/RDPU dulu; sisanya ${rp(D.amt - P.efPart)} untuk saham di bawah. <a class="link" href="#/portofolio?t=keuangan" onclick="portoGo('keuangan','wealthCard');return false">atur</a></p>` : ''}
     ${P.orders.length ? `<div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th class="r">Beli</th><th class="r">Lembar</th><th class="r">Bobot</th></tr>
-      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div>${o.held ? '' : noBrkBtn(o.s.sym)}</td>
+      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector)} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div><div class="tx-btns"><button class="tx-b buy" data-recbuy="${esc(o.s.sym)}:${o.sh}:${o.s.price}:0">✓ Sudah beli</button>${o.held ? '' : noBrkBtn(o.s.sym).replace('class="nobrk"', 'class="nobrk" style="margin-top:0"')}</div></td>
         <td class="r mono"><b>${rp((o.cost + o.fee) / (1 - B.fx) * P.K.v)}</b><div class="faint small">${fmt.usd(o.cost + o.fee, 2)}</div></td>
         <td class="r mono">${o.sh.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
         <td class="r mono">${Math.round(o.wAfter * 100)}%<div class="faint small">target ${Math.round(o.wT * 100)}%</div></td></tr>`).join('')}
     </table></div>
     ${rows.length ? `<p class="small" style="margin:8px 0 0">Bobot saham terbesar: <b>${Math.round(P.maxBefore * 100)}%</b> → <b>${Math.round(P.maxAfter * 100)}%</b> setelah DCA bulan ini.</p>` : ''}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn primary" id="dcaRec">✓ Sudah dibeli — catat ke portofolio</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn primary" id="dcaRec">✓ Semua sudah dibeli — catat ke portofolio</button></div>
     <p class="small faint" style="margin:6px 0 0">Di ${esc(B.n)}: beli berdasarkan <b>nominal</b> (bukan lembar) sesuai kolom Rupiah. Harga bisa bergeser sedikit — bila nominal beda, ubah angka lembar lewat ✎ di tabel Kepemilikan.</p>`
     : '<p class="small muted">Belum ada saham yang perlu dibeli — semua sudah di atas target.</p>'}` : '<p class="small muted">Isi nominal per bulan.</p>'}
     ${timingNote ? `<p class="small" style="margin:10px 0 0">${timingNote}</p>` : ''}

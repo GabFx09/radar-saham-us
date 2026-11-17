@@ -8,17 +8,19 @@
 const fq = (n) => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 4 });
 const r4 = (n) => Math.round(n * 10000) / 10000;
 
-/** lembar jual/beli: mode 'buy' | 'sell' | 'edit' */
-function openTrade(sym, mode, el) {
-  const h = App.holdings.find((x) => x.sym === sym);
-  if (!h) return;
+/** lembar jual/beli: mode 'buy' | 'sell' | 'edit'. pre = { q, p, cash } isian awal (mis. dari rekomendasi) */
+function openTrade(sym, mode, el, pre = {}) {
   const s = App.bySym[sym] || {};
+  if (!App.bySym[sym]) return;
+  const held = App.holdings.find((x) => x.sym === sym);
+  const h = held || { sym, qty: 0, cost: null }; // saham baru dari rekomendasi: hanya tab Beli
+  if (!held) mode = 'buy';
   const B = typeof brokerCfg === 'function' ? brokerCfg() : { fee: 0, n: 'broker' };
   const today = new Date().toISOString().slice(0, 10);
   openSheet(`<div class="sheet-handle"></div>
     <h3 style="margin-bottom:2px">${esc(sym)} <span class="faint small" style="font-weight:400">${esc(s.name || '')}</span></h3>
-    <p class="small muted" style="margin:0 0 10px">Dimiliki <b>${fq(h.qty)}</b> lembar${h.cost ? ` · harga beli rata-rata <b>${fmt.usd(h.cost)}</b>` : ''}${s.price ? ` · harga sekarang ${fmt.usd(s.price)}` : ''}</p>
-    <nav class="mtabs tx-tabs"><a href="#" data-m="buy">+ Beli tambah</a><a href="#" data-m="sell">− Jual</a><a href="#" data-m="edit">✎ Ubah data</a></nav>
+    <p class="small muted" style="margin:0 0 10px">${held ? `Dimiliki <b>${fq(h.qty)}</b> lembar${h.cost ? ` · harga beli rata-rata <b>${fmt.usd(h.cost)}</b>` : ''}` : 'Belum dimiliki — beli baru'}${s.price ? ` · harga sekarang ${fmt.usd(s.price)}` : ''}</p>
+    <nav class="mtabs tx-tabs"><a href="#" data-m="buy">+ ${held ? 'Beli tambah' : 'Beli'}</a>${held ? '<a href="#" data-m="sell">− Jual</a><a href="#" data-m="edit">✎ Ubah data</a>' : ''}</nav>
     <div id="txBody"></div>`);
 
   const show = (m) => {
@@ -45,11 +47,11 @@ function openTrade(sym, mode, el) {
     }
     const sell = m === 'sell';
     body.innerHTML = `<div class="alert-form">
-        <label>Lembar ${sell ? 'dijual' : 'dibeli'}<input id="tQ" type="number" step="any" min="0" inputmode="decimal" placeholder="mis. ${sell ? fq(h.qty) : '1.5'}" ${sell ? `max="${h.qty}"` : ''}></label>
-        <label>Harga ${sell ? 'jual' : 'beli'} per lembar ($)<input id="tP" type="number" step="any" min="0" inputmode="decimal" value="${s.price || ''}"></label>
+        <label>Lembar ${sell ? 'dijual' : 'dibeli'}<input id="tQ" type="number" step="any" min="0" inputmode="decimal" placeholder="mis. ${sell ? fq(h.qty) : '1.5'}" ${sell ? `max="${h.qty}"` : pre.q ? `value="${pre.q}"` : ''}></label>
+        <label>Harga ${sell ? 'jual' : 'beli'} per lembar ($)<input id="tP" type="number" step="any" min="0" inputmode="decimal" value="${(!sell && pre.p) || s.price || ''}"></label>
         <label>Tanggal<input id="tD" type="date" value="${today}" max="${today}"></label></div>
       ${sell ? `<div class="tx-quick">${[[0.25, '25%'], [0.5, '50%'], [0.75, '75%'], [1, 'Semua']].map(([f, n]) => `<button class="chip" data-frac="${f}">${n}</button>`).join('')}</div>` : ''}
-      ${cashCfg().set ? `<label class="chk tx-cash"><input type="checkbox" id="tCash" checked> ${sell ? 'masukkan hasil ke saldo' : 'potong dari saldo'} <span class="faint">(saldo ${fmt.usd(cashCfg().usd, 2)})</span></label>` : ''}
+      ${cashCfg().set ? `<label class="chk tx-cash"><input type="checkbox" id="tCash" ${sell || pre.cash !== false ? 'checked' : ''}> ${sell ? 'masukkan hasil ke saldo' : 'potong dari saldo'} <span class="faint">(saldo ${fmt.usd(cashCfg().usd, 2)})</span></label>` : ''}
       <div class="tx-prev" id="tPrev"></div>
       <div class="sheet-actions"><button class="btn" data-close>Batal</button><button class="btn primary ${sell ? 'tx-sell' : ''}" id="tGo">${sell ? 'Jual' : 'Beli'}</button></div>`;
     const prev = () => {
@@ -65,8 +67,9 @@ function openTrade(sym, mode, el) {
           ${pl != null ? `<div>Untung/rugi ≈ <b class="${cls(pl)}">${pl >= 0 ? '+' : '−'}${fmt.usd(Math.abs(pl), 2)}</b> <span class="${cls(pl)}">(${fmt.pct(p / h.cost - 1, 1)})</span></div>` : ''}
           <div>Sisa: <b>${fq(left)}</b> lembar${left <= 1e-6 ? ' — posisi ditutup' : ''}</div>`;
       } else {
-        const nq = r4(Number(h.qty) + q), nc = h.cost ? (h.qty * h.cost + q * p) / nq : p;
+        const nq = r4(Number(h.qty) + q), nc = h.cost && h.qty ? (h.qty * h.cost + q * p) / nq : p;
         out.innerHTML = `<div>Total bayar ≈ <b>${fmt.usd(q * p + fee, 2)}</b>${fee ? ` <span class="faint">(termasuk biaya ${fmt.usd(fee, 2)})</span>` : ''}</div>
+          ${pre.q && !sell ? `<div class="faint">Isian dari rekomendasi — ubah lembar &amp; harga sesuai yang benar-benar Anda beli di ${esc(B.n)}.</div>` : ''}
           <div>Sesudah beli: <b>${fq(nq)}</b> lembar · rata-rata <b>${fmt.usd(nc)}</b>${h.cost ? ` <span class="faint">(sebelumnya ${fmt.usd(h.cost)})</span>` : ''}</div>
           ${$('#tCash') && $('#tCash').checked && q * p + fee > cashCfg().usd + 0.005 ? `<div class="warn">Saldo hanya ${fmt.usd(cashCfg().usd, 2)} — saldo akan menjadi $0.</div>` : ''}`;
       }
@@ -131,6 +134,8 @@ function txHistoryCard() {
 }
 function bindTx(el) {
   $$('[data-trade]').forEach((b) => { b.onclick = () => { const [m, sym] = b.dataset.trade.split(':'); openTrade(sym, m, el); }; });
+  // satu saham dari rekomendasi sudah dibeli → catat yang itu saja
+  $$('[data-recbuy]').forEach((b) => { b.onclick = () => { const [sym, q, p, c] = b.dataset.recbuy.split(':'); openTrade(sym, 'buy', el, { q: +q || '', p: +p || '', cash: c !== '0' }); }; });
   $$('[data-undosale]').forEach((b) => { b.onclick = () => { if (undoSale(+b.dataset.undosale)) { const y = window.scrollY; renderPorto(el); window.scrollTo(0, y); } }; });
 }
 
@@ -168,13 +173,14 @@ function cashCard(rows, stockVal) {
     ${T ? `<p class="small" style="margin:0 0 8px">🌍 <a class="link" href="#/dunia">Waktu masuk <b style="color:${timingColor(T.label)}">${T.label}</b></a> (skor ${Math.round(T.score)}) — ${frac < 1 ? `pakai ${Math.round(frac * 100)}% saldo dulu, sisanya masuk bertahap tiap 2–4 minggu atau saat skor naik.` : 'kondisi mendukung untuk memakai saldo.'} <label class="chk" style="display:inline-flex"><input type="checkbox" id="cashAll" ${all ? 'checked' : ''}> pakai semua saldo</label></p>` : ''}
     ${P && P.orders.length ? `<div class="cmp-scroll"><table class="hold-table">
       <tr><th>Saham</th><th class="r">Beli</th><th class="r">Lembar</th><th class="r">Bobot</th></tr>
-      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${o.s.etf ? '' : ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector || '')} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div>${o.held || typeof noBrkBtn !== 'function' ? '' : noBrkBtn(o.s.sym)}</td>
+      ${P.orders.map((o) => `<tr><td><a href="#/s/${encodeURIComponent(o.s.sym)}"><b>${esc(o.s.sym)}</b></a> ${o.s.etf ? '' : ratingBadge(o.s.rating)}<div class="small"><b class="up">${o.held ? 'Tambah' : 'Beli baru'}</b> <span class="faint">· ${esc(o.s.sector || '')} · ${fmt.usd(o.s.price)}${o.s.etf ? '' : ` · potensi ${fmt.pct(o.s.val ? o.s.val.upside : null, 0)}`}</span></div><div class="tx-btns"><button class="tx-b buy" data-recbuy="${esc(o.s.sym)}:${o.sh}:${o.s.price}:1">✓ Sudah beli</button>${o.held || typeof noBrkBtn !== 'function' ? '' : noBrkBtn(o.s.sym).replace('class="nobrk"', 'class="nobrk" style="margin-top:0"')}</div></td>
         <td class="r mono"><b>${fmt.usd(o.cost + o.fee, 2)}</b></td>
         <td class="r mono">${fq(o.sh)}</td>
         <td class="r mono">${Math.round(o.wAfter * 100)}%<div class="faint small">target ${Math.round(o.wT * 100)}%</div></td></tr>`).join('')}
     </table></div>
     <p class="small" style="margin:8px 0 0">Total ${fmt.usd(P.orders.reduce((a, o) => a + o.cost + o.fee, 0), 2)} (biaya ${fmt.usd(P.feeTot, 2)})${P.left > 0.5 ? ` · sisa ${fmt.usd(P.left, 2)}` : ''}. Dipilih dari saham yang porsinya paling kurang menurut target profil${PF ? ` <b>${PF.ico} ${PF.n}</b>` : ''} — rekomendasi model, nilai wajar, dan batas bobot ikut diperhitungkan; saham bersaran JUAL tidak ditambah.</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn primary" id="cashRec">✓ Sudah dibeli — catat &amp; potong saldo</button></div>`
+    <p class="small faint" style="margin:6px 0 0">Beli sebagian saja? Ketuk <b>✓ Sudah beli</b> di baris saham itu — lembar &amp; harga bisa disesuaikan.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn primary" id="cashRec">✓ Semua sudah dibeli — catat &amp; potong saldo</button></div>`
     : `<p class="small muted">${use < 1 ? 'Saldo terlalu kecil untuk dibelikan.' : 'Belum ada saham yang perlu dibeli — semua sudah di atas target.'}</p>`}` : C.set ? '<p class="small muted" style="margin:8px 0 0">Saldo kosong. Saat Anda menjual saham, hasilnya otomatis masuk ke sini.</p>' : ''}
     ${typeof noBrkManage === 'function' ? noBrkManage() : ''}
     <p class="small faint" style="margin:8px 0 0">Saham yang tidak ada di ${esc(brokerCfg().n)}? Ketuk <b>✕ tidak ada di ${esc(brokerCfg().n)}</b> — tidak akan direkomendasikan lagi dan langsung diganti. Rekomendasi dari data model, bukan perintah beli. Harga bergerak — di aplikasi broker beli sesuai <b>nominal dolar</b>.</p>
