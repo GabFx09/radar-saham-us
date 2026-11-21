@@ -436,29 +436,32 @@ def fix_per_share(sym, info, bal):
     split ≤120 hari — EPS forward, target analis & dividen yang masih memakai basis lama."""
     info = dict(info)
     notes = []
+    r = recent_split_ratio(sym)
+    split = abs(math.log(r)) > math.log(1.5)
     price = sf(info.get("currentPrice")) or sf(info.get("regularMarketPrice"))
     mcap = sf(info.get("marketCap"))
     sh = sf(info.get("sharesOutstanding"))
     if price and mcap and price > 0:
         impl = mcap / price
         if not sh or not (1 / 1.5 < sh / impl < 1.5):
-            info["sharesOutstanding"] = sh = impl
-            notes.append("jumlah saham")
+            info["sharesOutstanding"] = sh = impl  # saham dua kelas (GOOGL, BRK-B…): pakai total setara → bukan masalah data
+            if split:
+                notes.append("jumlah saham")
     ni, teps = sf(info.get("netIncomeToCommon")), sf(info.get("trailingEps"))
-    if ni and sh and teps and ni > 0 and teps > 0 and not (1 / 2.5 < teps / (ni / sh) < 2.5):
+    lim = 2.5 if split else 6  # tanpa split: hanya angka yang jelas rusak (merger/kelas saham bisa membuat selisih wajar)
+    if ni and sh and teps and ni > 0 and teps > 0 and not (1 / lim < teps / (ni / sh) < lim):
         info["trailingEps"] = teps = ni / sh
         notes.append("EPS")
     if teps and teps > 0 and price:
         info["trailingPE"] = price / teps
     eq = srow(bal, ["Stockholders Equity", "Common Stock Equity"], 0)
     bv = sf(info.get("bookValue"))
-    if eq and eq > 0 and sh and bv and bv > 0 and not (1 / 2.5 < bv / (eq / sh) < 2.5):
+    if split and eq and eq > 0 and sh and bv and bv > 0 and not (1 / 2.5 < bv / (eq / sh) < 2.5):
         info["bookValue"] = bv = eq / sh
         notes.append("nilai buku")
         if price:
             info["priceToBook"] = price / bv
-    r = recent_split_ratio(sym)
-    if price and abs(math.log(r)) > math.log(1.5):
+    if price and split:
         L = math.log(r)
         feps = sf(info.get("forwardEps"))
         # EPS forward masih basis lama → jauh di atas EPS trailing searah rasio split
