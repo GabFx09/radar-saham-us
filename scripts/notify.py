@@ -214,8 +214,49 @@ def user_config():
     cfg.setdefault("alerts", {})
     cfg.setdefault("settings", {})
     cfg.setdefault("holdings", [])
+    apply_splits(cfg)
     CTX.update({"gid": gid, "state": state, "cfg": cfg})
     return gid, cfg, state
+
+
+def clean_split(r):
+    n = r if r >= 1 else 1 / r
+    return (round(n) >= 2 and abs(n - round(n)) < 0.01) or (n >= 1.5 and abs(2 * n - round(2 * n)) < 0.01)
+
+
+def apply_splits(cfg):
+    """Stock split sesudah posisi/alert dicatat → sesuaikan DI MEMORI (aplikasi yang menyimpan permanen ke gist,
+    sama persis aturannya dengan applySplits di docs/ext.js). Mencegah alert palsu & untung/rugi porto yang kacau."""
+    sp = (load_json("stocks.json") or {}).get("splits") or {}
+    for h in cfg.get("holdings") or []:
+        for d, r in sp.get(h.get("sym"), []):
+            if not clean_split(r) or d in (h.get("spl") or []):
+                continue
+            h["spl"] = (h.get("spl") or []) + [d]  # tandai (bila cfg ikut disimpan ke gist, aplikasi tidak menyesuaikan dua kali)
+            lots = h.get("lots") or []
+            since = h.get("added") or h.get("date") or (min(x["d"] for x in lots) if lots else "")
+            if not since or since >= d:
+                continue
+            q0 = float(h.get("qty") or 0)
+            if lots:
+                extra = sum(x["q"] * (r - 1) for x in lots if x["d"] < d)
+                h["lots"] = [dict(x, q=x["q"] * r, c=x["c"] / r) if x["d"] < d else x for x in lots]
+                h["qty"] = q0 + extra
+                sq = sum(x["q"] for x in h["lots"])
+                h["cost"] = sum(x["q"] * x["c"] for x in h["lots"]) / sq if sq else (float(h.get("cost") or 0) / r)
+            else:
+                h["qty"] = q0 * r
+                if h.get("cost"):
+                    h["cost"] = float(h["cost"]) / r
+    for sym, a in (cfg.get("alerts") or {}).items():
+        for d, r in sp.get(sym, []):
+            if not clean_split(r) or d in (a.get("spl") or []):
+                continue
+            a["spl"] = (a.get("spl") or []) + [d]
+            if a.get("set") and a["set"] < d:
+                for k in ("above", "below"):
+                    if a.get(k):
+                        a[k] = round(float(a[k]) / r, 2)
 
 
 # ----------------------------------------------------------------------------- data lokal

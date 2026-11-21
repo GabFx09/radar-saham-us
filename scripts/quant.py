@@ -380,7 +380,7 @@ def world_snapshot():
     return None
 
 
-def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
+def update_track(path, date, stocks, spy_price, prices, world=None, mk=None, splits=None):
     """Tambahkan snapshot hari ini lalu hitung kinerja setiap kohort sampai harga terakhir."""
     try:
         with open(path, encoding="utf-8") as fh:
@@ -402,6 +402,12 @@ def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
         snap["w"] = world
     if mk:
         snap["m"] = mk
+    # stock split tersimpan permanen di track.json (data harga 2 thn suatu saat tidak lagi memuatnya)
+    spl = track.get("splits") or {}
+    for sym, lst in (splits or {}).items():
+        have = {x[0] for x in spl.get(sym, [])}
+        spl[sym] = sorted(spl.get(sym, []) + [x for x in lst if x[0] not in have])
+    track["splits"] = spl
     track["snaps"] = [x for x in track["snaps"] if x["d"] != date] + [snap]
     track["snaps"].sort(key=lambda x: x["d"])
     track["snaps"] = track["snaps"][-400:]
@@ -412,6 +418,7 @@ def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
         json.dump(track, fh, separators=(",", ":"))
 
     last = {s["sym"]: s["price"] for s in stocks}
+    adj = split_adjuster(spl, prices)
 
     def last_px(sym):
         if sym in last:
@@ -419,12 +426,12 @@ def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
         df = prices.get(sym)
         return float(df["Close"].iloc[-1]) if df is not None and len(df) else None
 
-    def basket(d):
+    def basket(d, d0=None):
         rets = []
         for sym, p0 in d.items():
             p1 = last_px(sym)
             if p0 and p1:
-                rets.append(p1 / p0 - 1)
+                rets.append(p1 / adj(sym, d0, p0) - 1)
         return rets
 
     today = dt.date.fromisoformat(date)
@@ -434,7 +441,7 @@ def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
         spy_ret = spy_price / sn["spy"] - 1 if sn.get("spy") and spy_price else None
         row = {"d": sn["d"], "days": (today - d0).days, "spy": _r(spy_ret)}
         for k in ("sb", "b", "h"):
-            rr = basket(sn.get(k, {}))
+            rr = basket(sn.get(k, {}), sn["d"])
             row[k] = _r(float(np.mean(rr))) if rr else None
             row[k + "_n"] = len(rr)
             row[k + "_hit"] = _r(float(np.mean([x > (spy_ret or 0) for x in rr]))) if rr else None
@@ -451,9 +458,9 @@ def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
         for sym, p0 in {**old.get("sb", {}), **old.get("b", {})}.items():
             p1 = last_px(sym)
             if p0 and p1:
-                best.append([sym, _r(p1 / p0 - 1)])
+                best.append([sym, _r(p1 / adj(sym, old["d"], p0) - 1)])
         best.sort(key=lambda x: -x[1])
-    ic = signal_ic(track["snaps"], last)
+    ic = signal_ic(track["snaps"], last, adj)
     return {
         "ic": ic, "reweight": reweight(ic),
         "since": track["snaps"][0]["d"], "n_snaps": len(track["snaps"]),
@@ -463,7 +470,36 @@ def update_track(path, date, stocks, spy_price, prices, world=None, mk=None):
     }
 
 
-def signal_ic(snaps, last_px):
+def split_adjuster(splits, prices):
+    """adj(sym, tanggal_snapshot, harga_lama) → harga lama dalam basis sesudah split. Split pada/di sekitar tanggal
+    snapshot (zona waktu jalannya skrip ≠ bursa) diputuskan dengan membandingkan ke riwayat harga yang sudah disesuaikan."""
+    def adj(sym, d0, p0):
+        sp = splits.get(sym)
+        if not sp or not p0 or not d0:
+            return p0
+        f = 1.0
+        amb = 1.0
+        for sd, r in sp:
+            if sd > d0:
+                f *= r
+            if sd <= d0 and (dt.date.fromisoformat(d0) - dt.date.fromisoformat(sd)).days <= 4:
+                amb *= r
+        if amb != 1:
+            ref = None
+            df = prices.get(sym) if prices else None
+            try:
+                c = df["Close"].dropna()
+                c = c[c.index <= pd.Timestamp(d0)]
+                ref = float(c.iloc[-1]) if len(c) else None
+            except Exception:  # noqa: BLE001
+                ref = None
+            if ref and abs(math.log(p0 / (f * amb) / ref)) < abs(math.log(p0 / f / ref)):
+                f *= amb
+        return p0 / f
+    return adj
+
+
+def signal_ic(snaps, last_px, adj=None):
     """Information Coefficient: korelasi peringkat (Spearman) antara nilai faktor pada tanggal snapshot dan return
     sesudahnya. IC rata-rata > 0,05 yang konsisten = faktor punya daya prediksi."""
     names = {"score": "Skor gabungan", "fund": "Fundamental", "value": "Valuasi", "quality": "Kualitas", "growth": "Pertumbuhan",
@@ -482,6 +518,8 @@ def signal_ic(snaps, last_px):
         rows = []
         for sym, vals in sn["f"].items():
             p0, p1 = vals[0], last_px.get(sym)
+            if p0 and adj:
+                p0 = adj(sym, sn["d"], p0)
             if p0 and p1:
                 rows.append([p1 / p0 - 1] + vals[1:])
         if len(rows) < 50:

@@ -136,6 +136,10 @@ function setData(d) {
   App.data = d;
   App.bySym = Object.fromEntries(d.stocks.map((s) => [s.sym, s]));
   if (typeof setupEtfs === 'function') setupEtfs(d); // ETF indeks (inti portofolio)
+  // stock split: tanpa cloud langsung disesuaikan; dengan cloud tunggu sinkron (cloudPull) agar tidak menimpa data terbaru
+  if (typeof applySplits === 'function' && App.holdings && (!App.cloud || !App.cloud.gistId || Date.now() - (App.cloud.synced || 0) < 30000)) {
+    if (applySplits() && typeof cloudChanged === 'function') cloudChanged();
+  }
 }
 async function loadData() {
   // Data tersimpan (dari kunjungan sebelumnya) langsung ditampilkan; versi terbaru diunduh di latar.
@@ -244,6 +248,26 @@ function stockRow(s) {
 }
 
 /* ------------------------------------------------------------ HOME */
+/* Android: izin notifikasi berlaku per alamat situs (gabfx09.github.io dipakai Kabar, Radar Saham, Prakiraan Dunia).
+   Bila aplikasi Radar Saham (WebAPK) notifikasinya mati, Chrome bisa ikut mencabut langganan push Kabar → notifikasi putus. */
+function notifHint() {
+  try {
+    if (!/android/i.test(navigator.userAgent) || !('Notification' in window) || Notification.permission === 'granted') return '';
+    if (store.get('notifHintHide', 0) > Date.now()) return '';
+  } catch (e) { return ''; }
+  const denied = Notification.permission === 'denied';
+  return `<div class="card card-pad" id="notifHint" style="margin:0 0 14px;border-left:3px solid #f59e0b">
+    <b>🔔 Izinkan notifikasi untuk Radar Saham</b>
+    <p class="small muted" style="margin:6px 0 8px">Notifikasi Kabar bisa terputus kalau izin notifikasi Radar Saham mati. Di Android, aplikasi yang alamatnya sama (${esc(location.host)}) berbagi izin notifikasi.${denied ? ' Izin sedang <b>diblokir</b>: buka Pengaturan Android → Aplikasi → Radar Saham → Notifikasi → Izinkan (lakukan juga untuk Prakiraan Dunia).' : ''}</p>
+    <div style="display:flex;gap:8px">${denied ? '' : '<button class="btn primary" id="notifHintOk">Izinkan</button>'}<button class="btn" id="notifHintNo">Nanti</button></div></div>`;
+}
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  if (!t || !t.id) return;
+  if (t.id === 'notifHintOk') { try { await Notification.requestPermission(); } catch (err) { /* */ } }
+  if (t.id === 'notifHintNo') store.set('notifHintHide', Date.now() + 7 * 864e5);
+  if (t.id === 'notifHintOk' || t.id === 'notifHintNo') { const c = document.getElementById('notifHint'); if (c) c.remove(); }
+});
 function renderHome(el) {
   const d = App.data, S = d.stocks, m = d.market;
   const picks = homePicks();
@@ -273,6 +297,7 @@ function renderHome(el) {
       <p class="page-sub" style="margin:0">Screener fundamental-first: ${d.count} saham S&amp;P 500 &amp; growth populer</p></div>
     </div>
     <div class="updated" style="margin:6px 0 16px">Data per ${fmt.date(d.generated, { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+    ${notifHint()}
 
     <div class="market">
       ${m ? `<div class="card card-pad mk-main">
@@ -621,6 +646,14 @@ function fmtMetric(v, type) {
   }
 }
 
+function splitNote(sym) {
+  const sp = ((App.data && App.data.splits) || {})[sym];
+  if (!sp || !sp.length) return '';
+  const [d, r] = sp[sp.length - 1];
+  const clean = typeof cleanSplit === 'function' ? cleanSplit(r) : true;
+  const lbl = r >= 1 ? `${+r.toFixed(3)}:1` : `1:${+(1 / r).toFixed(3)}`;
+  return `<p class="small muted" style="margin:0 2px 8px">✂️ ${clean ? `<b>Stock split ${lbl}</b>` : `<b>Penyesuaian harga ×${+(1 / r).toFixed(4)}</b> (spin-off/aksi korporasi)`} berlaku ${fmt.date(d)} — seluruh riwayat harga sudah disesuaikan${clean ? '; jumlah lembar &amp; harga beli di porto ikut disesuaikan otomatis' : ''}.</p>`;
+}
 function renderDetail(el, sym) {
   const s = App.bySym[sym];
   if (s && s.etf && typeof renderEtf === 'function') { renderEtf(el, s); return; }
@@ -644,6 +677,7 @@ function renderDetail(el, sym) {
         <div><div class="mk-label">Proyeksi kenaikan ~12 bulan</div>
           <div class="proj-big ${cls(up)}">${v.capped ? '≥' : ''}${fmt.pct(up)}</div>
           ${v.capped ? '<div class="small" style="color:var(--warn)">Mentok batas model +100% — estimasi sangat tidak pasti</div>' : ''}
+          ${s.dq && s.dq.length ? `<div class="small" style="color:var(--warn)">⚠️ Kualitas data: ${s.dq.map(esc).join('; ')} — keyakinan valuasi diturunkan</div>` : ''}
           <div class="proj-sub">Total return termasuk dividen: <b class="${cls(v.total_return)}">${fmt.pct(v.total_return)}</b></div></div>
         <div class="proj-target"><div class="mk-label">Nilai wajar</div><div class="v">${fmt.usd(v.fair)}</div>
           <div class="conf c${confN}" title="Tingkat keyakinan berdasarkan kesesuaian antar-metode & jumlah analis"><i><b></b></i> Keyakinan ${esc(v.confidence)}</div></div>
@@ -692,7 +726,7 @@ function renderDetail(el, sym) {
   const chartHtml = `<div class="card card-pad" style="order:5">
     <div class="section-head" style="margin-bottom:8px"><h3 class="card-title" style="margin:0"><span class="ico">📈</span>Grafik Harga</h3>
       <div class="seg-mini" id="rangeSel">${['3M', '6M', '1Y', '2Y'].map((r) => `<button data-r="${r}" class="${r === '1Y' ? 'on' : ''}">${r}</button>`).join('')}</div></div>
-    <div class="chart-wrap" id="chart"><div class="splash" style="min-height:220px"><div class="spinner"></div></div></div>
+    ${splitNote(s.sym)}<div class="chart-wrap" id="chart"><div class="splash" style="min-height:220px"><div class="spinner"></div></div></div>
     <div class="legend"><span><i style="background:var(--accent-2)"></i>Harga</span><span><i style="background:#f59e0b"></i>MA50</span><span><i style="background:#a855f7"></i>MA200</span>${v ? '<span><i style="background:var(--up)"></i>Nilai wajar</span>' : ''}</div>
   </div>`;
 
@@ -704,7 +738,7 @@ function renderDetail(el, sym) {
     <h3 class="card-title"><span class="ico">🧮</span>Perhitungan Nilai Wajar</h3>
     ${mrow('dcf', s.sector_en === 'Financial Services' ? 'Model P/B–ROE' : 'DCF Free Cash Flow', s.sector_en === 'Financial Services' ? `ROE ${fmt.pct(m.roe, 0, false)}, biaya modal ${fmt.pct(v.discount, 1, false)} · bobot 35%` : `Tumbuh ${fmt.pct(v.growth_used, 0, false)}/thn (5 thn), diskonto ${fmt.pct(v.discount, 1, false)} · bobot 35%`)}
     ${mrow('multiple', 'Multiple P/E Wajar', `P/E wajar ${fmt.x(v.fair_pe)} vs median sektor ${fmt.x(v.sector_pe)} · bobot 30%`)}
-    ${mrow('analyst', 'Target Analis', `${m.n_analysts} analis, rentang ${fmt.usd(m.target_low, 0)}–${fmt.usd(m.target_high, 0)} · bobot 35%`)}
+    ${mrow('analyst', 'Target Analis', `${m.n_analysts} analis, rentang ${fmt.usd(m.target_low, 0)}–${fmt.usd(m.target_high, 0)}${m.target_disp != null ? ` · sebaran ${Math.round(m.target_disp * 100)}%${m.target_disp > 0.8 ? ' (analis sangat tidak sepakat)' : ''}` : ''} · bobot 35%`)}
     <div class="method" style="border-top:2px solid var(--border)"><span class="n" style="font-weight:800">Nilai wajar gabungan<small>Rata-rata tertimbang metode yang tersedia</small></span>
       <span class="v" style="font-size:16px">${fmt.usd(v.fair)}</span><span class="v ${cls(up)}" style="min-width:62px;font-size:16px">${fmt.pct(up, 0)}</span></div>
   </div>` : '';

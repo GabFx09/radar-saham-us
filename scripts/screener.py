@@ -359,7 +359,7 @@ def fetch_prices(symbols):
         for attempt in range(3):
             try:
                 df = yf.download(
-                    part, period="2y", interval="1d", auto_adjust=True,
+                    part, period="2y", interval="1d", auto_adjust=True, actions=True,
                     group_by="ticker", threads=True, progress=False,
                 )
                 break
@@ -375,6 +375,7 @@ def fetch_prices(symbols):
                 sub = sub.dropna(subset=["Close"])
                 if len(sub) > 60:
                     out[s] = sub
+                    note_splits(s, sub)
             except Exception:
                 pass
         log(f"  harga: {min(i + chunk, len(symbols))}/{len(symbols)}")
@@ -388,7 +389,7 @@ def fetch_prices(symbols):
         for i in range(0, len(missing), 25):
             part = missing[i : i + 25]
             try:
-                df = yf.download(part, period="2y", interval="1d", auto_adjust=True,
+                df = yf.download(part, period="2y", interval="1d", auto_adjust=True, actions=True,
                                  group_by="ticker", threads=True, progress=False)
             except Exception:
                 continue
@@ -398,9 +399,99 @@ def fetch_prices(symbols):
                     sub = sub.dropna(subset=["Close"])
                     if len(sub) > 60:
                         out[s] = sub
+                        note_splits(s, sub)
                 except Exception:
                     pass
     return out
+
+
+# ----------------------------------------------------------------------------- stock split
+DQ = {}  # sym -> [catatan kualitas data] (angka Yahoo yang diperbaiki / tidak wajar) → keyakinan valuasi diturunkan
+SPLITS = {}  # sym -> [[tanggal efektif, rasio]] (rasio 8 = 1 lembar jadi 8; < 1 = reverse split)
+
+
+def note_splits(sym, df):
+    """Catat stock split dari kolom 'Stock Splits' (yf.download actions=True). Harga sudah disesuaikan Yahoo,
+    tapi data per-lembar di info (EPS, target, dividen) & harga yang kita simpan sebelumnya belum tentu."""
+    if "Stock Splits" not in df:
+        return
+    ss = df["Stock Splits"].fillna(0)
+    ss = ss[(ss > 0) & (ss != 1)]
+    if len(ss):
+        SPLITS[sym] = [[ix.strftime("%Y-%m-%d"), round(float(v), 6)] for ix, v in ss.items()]
+
+
+def recent_split_ratio(sym, days=120):
+    today = dt.date.today()
+    r = 1.0
+    for d, v in SPLITS.get(sym) or []:
+        if 0 <= (today - dt.date.fromisoformat(d)).days <= days:
+            r *= v
+    return r
+
+
+def fix_per_share(sym, info, bal):
+    """Perbaiki angka per-lembar Yahoo yang belum ikut disesuaikan setelah stock split (atau rusak):
+    jumlah saham, EPS trailing (cek vs laba bersih / saham), nilai buku (cek vs ekuitas / saham), lalu — bila ada
+    split ≤120 hari — EPS forward, target analis & dividen yang masih memakai basis lama."""
+    info = dict(info)
+    notes = []
+    price = sf(info.get("currentPrice")) or sf(info.get("regularMarketPrice"))
+    mcap = sf(info.get("marketCap"))
+    sh = sf(info.get("sharesOutstanding"))
+    if price and mcap and price > 0:
+        impl = mcap / price
+        if not sh or not (1 / 1.5 < sh / impl < 1.5):
+            info["sharesOutstanding"] = sh = impl
+            notes.append("jumlah saham")
+    ni, teps = sf(info.get("netIncomeToCommon")), sf(info.get("trailingEps"))
+    if ni and sh and teps and ni > 0 and teps > 0 and not (1 / 2.5 < teps / (ni / sh) < 2.5):
+        info["trailingEps"] = teps = ni / sh
+        notes.append("EPS")
+    if teps and teps > 0 and price:
+        info["trailingPE"] = price / teps
+    eq = srow(bal, ["Stockholders Equity", "Common Stock Equity"], 0)
+    bv = sf(info.get("bookValue"))
+    if eq and eq > 0 and sh and bv and bv > 0 and not (1 / 2.5 < bv / (eq / sh) < 2.5):
+        info["bookValue"] = bv = eq / sh
+        notes.append("nilai buku")
+        if price:
+            info["priceToBook"] = price / bv
+    r = recent_split_ratio(sym)
+    if price and abs(math.log(r)) > math.log(1.5):
+        L = math.log(r)
+        feps = sf(info.get("forwardEps"))
+        # EPS forward masih basis lama → jauh di atas EPS trailing searah rasio split
+        if feps and feps > 0 and teps and teps > 0 and math.log(feps / teps) / L > max(0.5, math.log(1.6) / abs(L)):
+            info["forwardEps"] = feps / r
+            notes.append("EPS forward")
+        tm, tl = sf(info.get("targetMeanPrice")), sf(info.get("targetLowPrice"))
+        if tm and tm > 0 and math.log(tm / price) / L > 0.75 and (not tl or tl <= 0 or math.log(tl / price) / L > 0.5):
+            for k in ("targetMeanPrice", "targetMedianPrice", "targetHighPrice", "targetLowPrice"):
+                if sf(info.get(k)):
+                    info[k] = sf(info[k]) / r
+            notes.append("target analis")
+        for k in ("dividendRate", "trailingAnnualDividendRate"):
+            dps = sf(info.get(k))
+            if r > 1 and dps and dps / price > 0.07 and dps / r / price < 0.07:
+                info[k] = dps / r
+                if "dividen" not in notes:
+                    notes.append("dividen")
+    if notes:
+        DQ.setdefault(sym, []).append("disesuaikan: " + ", ".join(notes))
+        log(f"  {sym}: data per-lembar disesuaikan ({', '.join(notes)}){' — split ' + fmt_ratio(r) if r != 1 else ''}")
+    return info
+
+
+def recent_splits(days):
+    """split dalam N hari terakhir: {sym: [[tanggal, rasio], ...]} — dipakai aplikasi untuk menyesuaikan porto & alert"""
+    today = dt.date.today()
+    return {k: [x for x in v if (today - dt.date.fromisoformat(x[0])).days <= days]
+            for k, v in SPLITS.items() if any((today - dt.date.fromisoformat(x[0])).days <= days for x in v)}
+
+
+def fmt_ratio(r):
+    return f"{r:g}:1" if r >= 1 else f"1:{1 / r:g}"
 
 
 # ----------------------------------------------------------------------------- teknikal
@@ -760,6 +851,16 @@ def compute_fund(info, inc, bal, cf, qinc=None, qcf=None, mclose=None):
     f["target_high"] = sf(info.get("targetHighPrice"))
     f["target_low"] = sf(info.get("targetLowPrice"))
     f["target_upside"] = (f["target_mean"] / price - 1) if (f["target_mean"] and price and f["n_analysts"] >= 3) else None
+    # sebaran target analis: (tertinggi - terendah) / rata-rata — makin lebar = makin tidak sepakat / tidak pasti
+    f["target_disp"] = ((f["target_high"] - f["target_low"]) / f["target_mean"]
+                        if (f["target_high"] and f["target_low"] and f["target_mean"] and f["n_analysts"] >= 3) else None)
+    sym_ = info.get("symbol") or ""
+    if f["target_upside"] is not None and not (-0.7 < f["target_upside"] < 2.5):
+        DQ.setdefault(sym_, []).append(f"target analis tidak wajar ({f['target_upside']:+.0%} dari harga) — diabaikan")
+        f["target_upside"] = f["target_mean"] = None
+    if f["pe_ttm"] is not None and 0 < f["pe_ttm"] < 1:
+        DQ.setdefault(sym_, []).append(f"P/E {f['pe_ttm']:.2f}x tidak wajar — diabaikan")
+        f["pe_ttm"] = None
 
     # --- lainnya
     f["beta"] = sf(info.get("beta"))
@@ -988,6 +1089,11 @@ def fair_value(rec, medians):
     # laba melonjak ekstrem (kemungkinan puncak siklus) → keyakinan diturunkan
     if (f.get("eps_growth_fwd") or 0) > 0.6 or (f.get("eps_ttm") or 0) <= 0:
         conf = "Rendah"
+    # data Yahoo perlu diperbaiki / analis sangat tidak sepakat → jangan beri keyakinan tinggi
+    if DQ.get(rec["sym"]) or (f.get("target_disp") or 0) > 1.2:
+        conf = "Rendah"
+    elif conf == "Tinggi" and (f.get("target_disp") or 0) > 0.8:
+        conf = "Sedang"
     return {
         "fair": fv, "upside": fv / price - 1,
         "bear": bear, "bull": bull,
@@ -1456,6 +1562,7 @@ def main():
     records = []
     for s, (info, inc, bal, cf, qinc, qcf) in raw.items():
         try:
+            info = fix_per_share(s, info, bal)
             fin_cur = info.get("financialCurrency") or "USD"
             if fin_cur != (info.get("currency") or "USD"):
                 log(f"  lewati {s}: laporan keuangan dalam {fin_cur}")
@@ -1623,7 +1730,7 @@ def main():
                 "pe_ttm", "pe_fwd", "peg", "ev_ebitda", "fcf_yield", "ps", "pb", "de", "current_ratio",
                 "netdebt_ebitda", "int_cov", "piotroski", "altman", "div_yield", "payout", "buyback_yield",
                 "sh_yield", "rec_mean", "n_analysts", "target_mean", "target_high", "target_low",
-                "target_upside", "beta", "short_float", "insider", "inst", "fcf", "net_debt", "cash", "debt"]
+                "target_upside", "target_disp", "beta", "short_float", "insider", "inst", "fcf", "net_debt", "cash", "debt"]
         return {k: r(f.get(k), 4) for k in keys}
 
     stocks = []
@@ -1658,6 +1765,7 @@ def main():
                 "total_return": r(v["total_return"]),
             },
             "pros": rec["pros"], "cons": rec["cons"], "thesis": rec["thesis"], "plan": rec["plan"],
+            "dq": DQ.get(rec["sym"]) or None,
             "geo": rec["geo"], "country": rec["country"],
             "factors": rec.get("factors"),
             "flow": rec.get("flow"),
@@ -1742,7 +1850,7 @@ def main():
                 mk_snap = None
             quant_out["track"] = quant.update_track(os.path.join(OUT_DIR, "track.json"), today, stocks,
                                                     spy_t["price"] if spy_t else None, prices,
-                                                    world=quant.world_snapshot(), mk=mk_snap)
+                                                    world=quant.world_snapshot(), mk=mk_snap, splits=SPLITS)
             quant_out["track"]["reweight"]["applied"] = bool(rw)
         except Exception as e:
             log(f"  rekam jejak gagal: {e}")
@@ -1830,6 +1938,7 @@ def main():
         "sectors": sector_out,
         "cov": {"ins": sum(1 for x in stocks if x.get("ins")), "own": sum(1 for x in stocks if x.get("own"))},
         "etfs": etfs,
+        "splits": recent_splits(400),
         "stocks": slim,
     }
     with open(os.path.join(OUT_DIR, "stocks.json"), "w", encoding="utf-8") as fh:

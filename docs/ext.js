@@ -172,6 +172,7 @@ async function cloudPull() {
   } else if (localUpdated > rT) await cloudPush();
   App.cloud.synced = Date.now();
   store.set('cloud', App.cloud);
+  if (applySplits()) { cloudChanged(); changed = true; } // sesudah sinkron: data sudah terbaru, aman disesuaikan
   return changed;
 }
 function cloudChanged() {
@@ -180,6 +181,55 @@ function cloudChanged() {
   if (!App.cloud || !App.cloud.gistId) return;
   clearTimeout(cloudChanged._t);
   cloudChanged._t = setTimeout(() => cloudPush().catch((e) => toast('Sinkron cloud gagal: ' + e.message)), 1200);
+}
+/* ---------- stock split: sesuaikan jumlah lembar, harga beli & alert yang dicatat SEBELUM tanggal split.
+   Rasio "tidak bulat" (mis. 1.241) adalah penyesuaian harga karena spin-off — jumlah lembar di broker tidak berubah. */
+function cleanSplit(r) {
+  const n = r >= 1 ? r : 1 / r;
+  return (Math.round(n) >= 2 && Math.abs(n - Math.round(n)) < 0.01) || (n >= 1.5 && Math.abs(2 * n - Math.round(2 * n)) < 0.01);
+}
+function splitLabel(r) { return r >= 1 ? `${+r.toFixed(3)}:1` : `1:${+(1 / r).toFixed(3)}`; }
+function applySplits() {
+  const sp = (App.data && App.data.splits) || {};
+  if (!Object.keys(sp).length) return false;
+  let marked = false;
+  const done = [];
+  const rq = (x) => Math.round(x * 1e6) / 1e6, rc = (x) => Math.round(x * 1e4) / 1e4;
+  (App.holdings || []).forEach((h) => (sp[h.sym] || []).forEach(([d, r]) => {
+    if (!cleanSplit(r) || (h.spl || []).includes(d)) return;
+    h.spl = [...(h.spl || []), d]; marked = true;
+    const since = h.added || h.date || (h.lots && h.lots.length ? h.lots.map((l) => l.d).sort()[0] : '');
+    if (!since || since >= d) return; // dicatat sesudah split → sudah memakai basis baru
+    const q0 = Number(h.qty) || 0;
+    if (h.lots && h.lots.length) {
+      let extra = 0;
+      h.lots = h.lots.map((l) => {
+        if (!(l.d < d)) return l;
+        extra += l.q * (r - 1);
+        return Object.assign({}, l, { q: rq(l.q * r), c: rc(l.c / r) }, l.o != null ? { o: rq(l.o * r) } : {});
+      });
+      h.qty = rq(q0 + extra);
+      const sq = h.lots.reduce((a, l) => a + l.q, 0);
+      h.cost = sq ? rc(h.lots.reduce((a, l) => a + l.q * l.c, 0) / sq) : rc(Number(h.cost) / r);
+    } else {
+      h.qty = rq(q0 * r);
+      if (h.cost) h.cost = rc(Number(h.cost) / r);
+    }
+    if (h.buy && h.buy.fair) h.buy.fair = rc(h.buy.fair / r);
+    done.push(`${h.sym} ${splitLabel(r)}`);
+  }));
+  Object.entries(App.alerts || {}).forEach(([sym, a]) => (sp[sym] || []).forEach(([d, r]) => {
+    if (!cleanSplit(r) || (a.spl || []).includes(d)) return;
+    a.spl = [...(a.spl || []), d]; marked = true;
+    if (!a.set || a.set >= d) return;
+    if (a.above) a.above = Math.round((a.above / r) * 100) / 100;
+    if (a.below) a.below = Math.round((a.below / r) * 100) / 100;
+    if (!done.some((x) => x.startsWith(sym + ' '))) done.push(`${sym} ${splitLabel(r)} (alert)`);
+  }));
+  if (!marked) return false;
+  store.set('holdings', App.holdings); store.set('alerts', App.alerts);
+  if (done.length) toast('Stock split disesuaikan: ' + done.join(', '));
+  return true;
 }
 // kaitkan ke fungsi yang mengubah watchlist / perbandingan
 const _toggleWatch = toggleWatch;
