@@ -487,7 +487,7 @@ def digest():
         for e in ev:
             ex = " · ".join(x for x in (f"perkiraan {e['fc']}" if e.get("fc") else "", f"sebelumnya {e['prev']}" if e.get("prev") else "") if x)
             soon.append(f"🗓 <b>{esc(kalender.label(e))}</b> {kalender.wib(e)}" + (f" ({esc(ex)})" if ex else "")
-                        + (" — pasar biasanya bergejolak, hindari beli tergesa sebelum rilis" if e.get("big") else ""))
+                        + (" — pasar bisa bergejolak 1–2 hari (untuk hold bulanan cukup beli bertahap)" if e.get("big") else ""))
     except Exception as e:  # noqa: BLE001
         log(f"agenda ekonomi gagal: {e}")
     if soon:

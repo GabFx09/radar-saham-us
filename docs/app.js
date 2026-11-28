@@ -745,14 +745,14 @@ function renderDetail(el, sym) {
 
   // ---------- trading plan
   const planHtml = `<div class="card card-pad" style="order:7">
-    <h3 class="card-title"><span class="ico">🧭</span>Rencana Trading</h3>
+    <h3 class="card-title"><span class="ico">🧭</span>Rencana Beli &amp; Hold</h3>
     <div class="plan">
       <div class="entry"><div class="l">Zona beli</div><div class="v">${fmt.usd(p.entry_lo)} – ${fmt.usd(p.entry_hi, 2)}</div></div>
-      <div class="stop"><div class="l">Stop loss</div><div class="v down">${fmt.usd(p.stop)}</div><div class="small faint">${fmt.pct(p.stop / s.price - 1)}</div></div>
+      <div class="stop"><div class="l">Stop jangka pendek</div><div class="v down">${fmt.usd(p.stop)}</div><div class="small faint">${fmt.pct(p.stop / s.price - 1)}</div></div>
       <div class="tp"><div class="l">Target 1 (wajar)</div><div class="v up">${fmt.usd(p.target)}</div></div>
       <div class="tp"><div class="l">Target 2 (bull)</div><div class="v up">${fmt.usd(p.target2)}</div></div>
     </div>
-    <p class="small muted" style="margin:12px 0 0">Risk/Reward: <b class="mono">${p.rr == null ? '–' : '1 : ' + fmt.num(p.rr, 1)}</b>. Zona beli memakai ATR &amp; MA50; stop loss ≈ 2.5× ATR di bawah harga. Cocok untuk investor menengah (6–12 bulan) — investor jangka panjang bisa mengabaikan stop dan fokus pada fundamental.</p>
+    <p class="small muted" style="margin:12px 0 0">Risk/Reward: <b class="mono">${p.rr == null ? '–' : '1 : ' + fmt.num(p.rr, 1)}</b>. Zona beli memakai ATR &amp; MA50. Stop jangka pendek ≈ 2,5× ATR hanya untuk trading cepat — untuk <b>hold bulanan</b> pakai batas rugi yang lebih lebar di bawah (mengikuti volatilitas &amp; profil), lalu evaluasi ulang bila fundamental/rekomendasi memburuk. Target 1 = nilai wajar, biasanya tercapai dalam hitungan bulan, bukan hari.</p>
     ${typeof posSizeHtml === 'function' ? posSizeHtml(s) : ''}
   </div>`;
 

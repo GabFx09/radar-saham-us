@@ -209,7 +209,7 @@ function econCard() {
   if (!rows.length) return '';
   return `<div class="card card-pad econ" id="mk-econ">
     <h3 class="card-title">Agenda ekonomi AS minggu ini</h3>
-    <p class="small muted" style="margin:0 0 8px">Rilis berdampak tinggi (CPI, FOMC, NFP, PCE, PDB) sering membuat saham bergerak tajam. Hindari membeli tergesa beberapa jam sebelum rilis besar.</p>
+    <p class="small muted" style="margin:0 0 8px">Rilis berdampak tinggi (CPI, FOMC, NFP, PCE, PDB) bisa menggerakkan pasar tajam selama 1–2 hari. Untuk hold bulanan tidak perlu menunda beli — tapi bila ragu, beli bertahap (separuh sebelum, separuh sesudah rilis). Yang lebih penting: hasilnya mengubah arah suku bunga &amp; sentimen beberapa bulan ke depan.</p>
     <table class="econ-t">${rows.map((e) => {
       const past = Date.parse(e.t) < now;
       return `<tr class="${past ? 'past' : ''} ${e.big ? 'big' : ''}"><td class="nw">${econWib(e.t)}</td>
@@ -267,7 +267,7 @@ function makroHomeStrip() {
   const fg = mk.fg;
   const cv = mk.curve;
   const nx = econNext(24);
-  const econLine = nx.length ? `<a class="econ-alert" href="#/makro">🗓 <b>${nx.map((e) => esc(e.id || e.title)).slice(0, 3).join(', ')}</b> · ${econWib(nx[0].t)} — pasar bisa bergejolak, hindari beli tergesa sebelum rilis</a>` : '';
+  const econLine = nx.length ? `<a class="econ-alert" href="#/makro">🗓 <b>${nx.map((e) => esc(e.id || e.title)).slice(0, 3).join(', ')}</b> · ${econWib(nx[0].t)} — pasar bisa bergejolak 1–2 hari; untuk hold bulanan cukup beli bertahap</a>` : '';
   return `<section class="section"><div class="section-head"><div><h2>Makro Hari Ini</h2></div><a class="link" href="#/makro">Monitor ›</a></div>
     ${econLine}
     <div class="home-macro">

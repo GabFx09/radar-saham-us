@@ -7,11 +7,11 @@
    ===================================================================== */
 'use strict';
 
-const RISK_OPTS = [0.5, 1, 1.5, 2];
+const RISK_OPTS = [1, 2, 3];
 
 function riskPct() {
-  const v = Number(store.get('riskPct', 1));
-  return RISK_OPTS.includes(v) ? v : 1;
+  const v = Number(store.get('riskPct', 2));
+  return RISK_OPTS.includes(v) ? v : 2;
 }
 function idrRate() {
   const mk = App.makro;
@@ -32,11 +32,17 @@ function capitalUsd() {
 function posSizeHtml(s) {
   const p = s.plan || {};
   const price = s.price;
-  if (!price || !p.stop || p.stop >= price) return '';
+  if (!price) return '';
   posSizeHtml.cur = s;
   const cap = capitalUsd();
   const rp = riskPct();
-  const PF = typeof prof === 'function' ? prof() : { maxW: 0.25 };
+  const PF = typeof prof === 'function' ? prof() : { maxW: 0.25, trail: [0.45, 0.10, 0.30] };
+  // horizon bulanan: batas rugi = trailing stop yang sama dengan saran di Portofolio (volatilitas tahunan × profil),
+  // bukan stop swing 2,5×ATR yang terlalu sempit untuk dipegang berbulan-bulan
+  const vol = (s.q && s.q.vol) || 0.35;
+  const tr = PF.trail || [0.45, 0.10, 0.30];
+  const stopPct = Math.max(tr[1], Math.min(tr[2], vol * tr[0]));
+  const stop = price * (1 - stopPct);
   const fee = (typeof brokerCfg === 'function' ? brokerCfg().fee : 0) || 0;
   const idr = idrRate();
   const head = `<div class="ps-head"><b>Ukuran posisi berbasis risiko</b>
@@ -44,7 +50,7 @@ function posSizeHtml(s) {
   if (!(cap.total > 0)) {
     return `<div class="possize" id="possize">${head}<p class="small muted" style="margin:6px 0 0">Isi saham di <a class="link" href="#/portofolio">Portofolio</a> (atau saldo tunai) agar aplikasi bisa menghitung berapa lembar yang aman dibeli.</p></div>`;
   }
-  const riskPerShare = price - p.stop + price * fee * 2; // turun sampai stop + biaya beli & jual
+  const riskPerShare = price - stop + price * fee * 2; // turun sampai stop + biaya beli & jual
   const riskUsd = cap.total * rp / 100;
   let q = riskUsd / riskPerShare;
   const capW = cap.total * PF.maxW; // batas bobot per saham dari profil
@@ -61,19 +67,17 @@ function posSizeHtml(s) {
   const val = q * price;
   const loss = q * riskPerShare;
   const idrTxt = (x) => (idr ? ` <span class="faint">≈ Rp ${Math.round(x * idr).toLocaleString('id-ID')}</span>` : '');
-  const ev = typeof econNext === 'function' ? econNext(24) : [];
   const earnSoon = s.earnings_ts && s.earnings_ts * 1000 > Date.now() && s.earnings_ts * 1000 < Date.now() + 5 * 864e5;
   return `<div class="possize" id="possize">${head}
     <div class="kv k3" style="margin-top:8px">
       <div><div class="l">Beli maksimal</div><div class="v">${q > 0 ? fq2(q) + ' lbr' : '–'}</div><div class="s">${fmt.usd(val, 0)}${idrTxt(val)}</div></div>
-      <div><div class="l">Rugi bila kena stop</div><div class="v down">${fmt.usd(loss, 0)}</div><div class="s">${(loss / cap.total * 100).toFixed(1).replace('.', ',')}% modal · termasuk biaya</div></div>
+      <div><div class="l">Rugi bila turun ${Math.round(stopPct * 100)}%</div><div class="v down">${fmt.usd(loss, 0)}</div><div class="s">${(loss / cap.total * 100).toFixed(1).replace('.', ',')}% modal · termasuk biaya</div></div>
       <div><div class="l">Bobot di portofolio</div><div class="v">${Math.round((val + heldVal) / cap.total * 100)}%</div><div class="s">modal ${fmt.usd(cap.total, 0)}${held ? ' · sudah punya ' + fmt.usd(heldVal, 0) : ''}</div></div>
     </div>
     ${limit ? `<p class="small warn-t" style="margin:6px 0 0">⚠ Jumlah ${limit}.</p>` : ''}
     ${p.target && p.target <= price ? `<p class="small warn-t" style="margin:6px 0 0">⚠ Nilai wajar model (${fmt.usd(p.target)}) di bawah harga sekarang — risiko lebih besar dari potensi naik. Angka di atas hanya batas maksimal, bukan saran membeli.</p>` : ['HINDARI', 'HOLD'].includes(s.rating) ? `<p class="small warn-t" style="margin:6px 0 0">⚠ Rekomendasi model: ${esc(s.rating)} — angka di atas hanya batas maksimal, bukan saran membeli.</p>` : ''}
-    ${earnSoon ? `<p class="small warn-t" style="margin:6px 0 0">⚠ Laporan keuangan ${fmt.date(s.earnings_ts * 1000, { weekday: 'short', day: 'numeric', month: 'short' })} — harga bisa melompat melewati stop; pertimbangkan beli separuh dulu.</p>` : ''}
-    ${ev.length ? `<p class="small warn-t" style="margin:6px 0 0">⚠ Rilis ekonomi besar ≤ 24 jam: ${ev.map((e) => esc(e.id || e.title)).slice(0, 3).join(', ')} (${econWib(ev[0].t)}).</p>` : ''}
-    <p class="small faint" style="margin:6px 0 0">Aturan: bila harga turun ke stop ${fmt.usd(p.stop)}, kerugian hanya ≈ ${String(rp).replace('.', ',')}% dari modal. Dengan risiko 1% per posisi, 10 kali salah beruntun baru memotong modal ±10%. Stop bisa terlewati saat harga gap.</p>
+    ${earnSoon ? `<p class="small warn-t" style="margin:6px 0 0">⚠ Laporan keuangan ${fmt.date(s.earnings_ts * 1000, { weekday: 'short', day: 'numeric', month: 'short' })} — harga bisa melompat ±10%; pertimbangkan beli separuh sebelum &amp; separuh sesudah laporan.</p>` : ''}
+    <p class="small faint" style="margin:6px 0 0">Untuk <b>hold bulanan</b>: batas rugi ${Math.round(stopPct * 100)}% (≈ ${fmt.usd(stop)}) mengikuti volatilitas saham ini (${Math.round(vol * 100)}%/thn) &amp; profil ${esc(PF.n || '')} — sama dengan trailing stop yang dipantau di Portofolio, jadi tidak mudah tersentuh oleh naik-turun harian. Bila batas itu tersentuh, kerugian ≈ ${rp}% modal. Stop swing ${p.stop ? fmt.usd(p.stop) : '–'} di atas hanya untuk trading jangka pendek.</p>
   </div>`;
 }
 function fq2(n) { return (Number(n) || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 }); }
@@ -136,7 +140,7 @@ function tradeBehaviorCard() {
     const s = App.bySym && App.bySym[h.sym];
     const d0 = firstBuy(h.sym);
     return s && h.cost ? { sym: h.sym, r: s.price / h.cost - 1, days: d0 ? daysBetween(d0, nowD) : null, rating: s.rating } : null;
-  }).filter((x) => x && x.r < -0.15 && x.days != null && x.days > 60);
+  }).filter((x) => x && x.days != null && ((x.r < -0.25 && x.days > 120) || (x.r < -0.15 && x.days > 60 && x.rating === 'HINDARI')));
   if (bag.length) out.push({ s: 'bad', t: `<b>Rugi yang ditahan lama:</b> ${bag.map((x) => `${esc(x.sym)} ${fmt.pct(x.r, 0)} selama ${x.days} hari${x.rating === 'HINDARI' ? ' (model: HINDARI)' : ''}`).join(', ')}. Tanyakan: "kalau belum punya, apakah saya akan membelinya hari ini?"` });
   // ---- rata-rata turun (beli lagi saat harga di bawah rata-rata beli)
   const avgDown = [];
@@ -157,7 +161,7 @@ function tradeBehaviorCard() {
   const n30 = sales.filter((x) => x.d >= d30).length + lotsAll.filter((l) => l.d && l.d >= d30).length;
   const fees = sales.reduce((a, x) => a + (x.fee || 0), 0);
   rows.push(['Transaksi 30 hari terakhir', `${n30}×`, fees > 0 ? `biaya jual tercatat ${fmt.usd(fees, 2)}` : '']);
-  if (n30 >= 12) out.push({ s: 'warn', t: `<b>Sering bertransaksi</b> (${n30}× dalam 30 hari). Untuk investor 6–12 bulan, biaya &amp; keputusan emosional biasanya lebih merugikan daripada manfaatnya.` });
+  if (n30 >= 8) out.push({ s: 'warn', t: `<b>Sering bertransaksi</b> (${n30}× dalam 30 hari). Untuk gaya hold bulanan, biaya &amp; keputusan emosional biasanya lebih merugikan daripada manfaatnya.` });
   if (!out.length) out.push({ s: 'ok', t: 'Belum terlihat kebiasaan merugikan dari data yang ada.' });
 
   const sample = T.length < 5 ? `<p class="small faint" style="margin:8px 0 0">Baru ${T.length} penjualan tercatat — kesimpulan makin bisa dipercaya setelah ±10 transaksi. Catat setiap beli/jual lewat tombol transaksi agar analisis lengkap.</p>` : '';
