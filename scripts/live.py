@@ -19,6 +19,7 @@ import yfinance as yf
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import aliran  # noqa: E402
+import kalender  # noqa: E402
 import makro  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -173,8 +174,14 @@ def main():
         if len(new) > 0.5 * max(1, len(syms)):
             stocks, stocks_t, stocks_day = new, now.strftime("%Y-%m-%dT%H:%MZ"), sday
         log(f"saham: {len(new)}/{len(syms)} · aliran dana besar: {nbig}")
+    # ---- kalender ekonomi AS: ambil ulang tiap ± 3 jam (sumbernya memperbarui angka aktual sesudah rilis)
+    econ, econ_t = old.get("econ"), old.get("econ_t")
+    if not econ_t or (now - dt.datetime.strptime(econ_t, "%Y-%m-%dT%H:%MZ").replace(tzinfo=dt.timezone.utc)).total_seconds() > 3 * 3600:
+        ev = kalender.fetch(log)
+        if ev is not None:
+            econ, econ_t = ev, now.strftime("%Y-%m-%dT%H:%MZ")
     out = {"t": now.strftime("%Y-%m-%dT%H:%MZ"), "market_open": market_open, "assets": assets,
-           "stocks": stocks, "stocks_t": stocks_t, "stocks_day": stocks_day}
+           "stocks": stocks, "stocks_t": stocks_t, "stocks_day": stocks_day, "econ": econ, "econ_t": econ_t}
     with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(out, fh, separators=(",", ":"))
     log(f"live.json ditulis · IDR={assets.get('IDR=X', {}).get('p')} · bursa {'BUKA' if market_open else 'tutup'}")

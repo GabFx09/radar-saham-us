@@ -22,6 +22,7 @@ import time
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kalender  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "docs", "data")
@@ -479,6 +480,16 @@ def digest():
             soon.append(f"💵 <b>{esc(sym)}</b> ex-dividend {dt.datetime.fromtimestamp(x, dt.timezone.utc).strftime('%d/%m')}"
                         + (" (perkiraan)" if s.get("exdiv_est") else "")
                         + (f" · ${s['div_rate']:.2f}/thn" if s.get("div_rate") else "") + " — harus sudah memegang sebelum tanggal ini")
+    # agenda ekonomi AS ≤ 36 jam (dampak tinggi): CPI, FOMC, NFP, PCE, PDB ...
+    try:
+        ev = kalender.upcoming((load_json("live.json") or {}).get("econ"), hours=36, big_only=False)
+        ev = [e for e in ev if e["imp"] == "tinggi"][:5]
+        for e in ev:
+            ex = " · ".join(x for x in (f"perkiraan {e['fc']}" if e.get("fc") else "", f"sebelumnya {e['prev']}" if e.get("prev") else "") if x)
+            soon.append(f"🗓 <b>{esc(kalender.label(e))}</b> {kalender.wib(e)}" + (f" ({esc(ex)})" if ex else "")
+                        + (" — pasar biasanya bergejolak, hindari beli tergesa sebelum rilis" if e.get("big") else ""))
+    except Exception as e:  # noqa: BLE001
+        log(f"agenda ekonomi gagal: {e}")
     if soon:
         L.append("\n<b>⏰ SEGERA</b>")
         L.extend(soon)

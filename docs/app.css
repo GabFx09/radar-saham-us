@@ -612,3 +612,23 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .nobrk { display: inline-block; margin-top: 4px; border: 1px dashed var(--border); background: transparent; color: var(--text-3); font-size: 11px; padding: 2px 7px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .nobrk:hover { color: var(--down); border-color: var(--down); }
 .nobrk.on { border-style: solid; color: var(--text-2); }
+
+/* agenda ekonomi */
+.econ-t { width: 100%; border-collapse: collapse; font-size: 13px; }
+.econ-t td { padding: 6px 4px; border-top: 1px solid var(--border); vertical-align: top; }
+.econ-t .nw { white-space: nowrap; } .econ-t .r { text-align: right; }
+.econ-t tr.past { opacity: .55; } .econ-t tr.big td:first-child { font-weight: 600; }
+.econ-t .imp.tinggi { color: var(--down, #e5534b); } .econ-t .imp.sedang { color: var(--warn, #d29922); }
+.econ-alert { display: block; margin: 0 0 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px; color: inherit; text-decoration: none;
+  background: var(--warn-bg); border: 1px solid var(--warn); }
+@media (max-width: 560px) { .econ-t small { display: block; } }
+.warn-t { color: var(--warn); }
+
+/* ukuran posisi & kebiasaan trading */
+.possize { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.ps-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.beh-list { display: grid; gap: 8px; margin-top: 10px; }
+.beh { font-size: 13px; line-height: 1.5; padding: 9px 11px; border-radius: 10px; border-left: 3px solid var(--border); background: var(--warn-bg); }
+.beh.ok { border-left-color: var(--up); background: var(--up-bg, rgba(0, 160, 100, .08)); }
+.beh.warn { border-left-color: var(--warn); }
+.beh.bad { border-left-color: var(--down); background: var(--down-bg); }

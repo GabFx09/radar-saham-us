@@ -340,8 +340,13 @@ def reweight(ic_rows):
         return {"status": "menunggu", "pillar": BASE_PILLAR, "top": BASE_TOP, **base}
     conf = min(1.0, have / 60)
 
+    def eff_ic(k):
+        # IC yang tidak stabil antar-periode (paruh 1 vs 2 berlawanan/lemah) hanya dipakai separuh
+        r = by[k]
+        return r["h60"] * (1.0 if r.get("h60_stab", True) else 0.5)
+
     def tilt(bw):
-        w = {k: bw[k] * (1 + 0.5 * conf * max(-1.0, min(1.0, by[k]["h60"] / RW_IC_FULL))) for k in bw}
+        w = {k: bw[k] * (1 + 0.5 * conf * max(-1.0, min(1.0, eff_ic(k) / RW_IC_FULL))) for k in bw}
         tgt = sum(bw.values())
         for _ in range(5):
             tot = sum(w.values())
@@ -350,7 +355,7 @@ def reweight(ic_rows):
         return {k: round(v / tot * tgt, 3) for k, v in w.items()}
 
     return {"status": "aktif", "conf": round(conf, 2), "pillar": tilt(BASE_PILLAR), "top": tilt(BASE_TOP),
-            "ic": {k: by[k]["h60"] for k in keys}, **base}
+            "ic": {k: by[k]["h60"] for k in keys}, "stab": {k: by[k].get("h60_stab") for k in keys}, **base}
 
 
 def load_reweight(path):
@@ -378,6 +383,11 @@ def world_snapshot():
         except Exception:  # noqa: BLE001
             continue
     return None
+
+
+# biaya pulang-pergi (beli + jual) untuk investor ritel Indonesia di saham AS: komisi broker, selisih bid/ask, slippage.
+# Selisih kurs IDR↔USD tidak dihitung (hanya saat setor/tarik, bukan tiap transaksi). Ubah lewat env TRADE_COST.
+TRADE_COST = float(os.environ.get("TRADE_COST", "0.005"))
 
 
 def update_track(path, date, stocks, spy_price, prices, world=None, mk=None, splits=None):
@@ -461,7 +471,15 @@ def update_track(path, date, stocks, spy_price, prices, world=None, mk=None, spl
                 best.append([sym, _r(p1 / adj(sym, old["d"], p0) - 1)])
         best.sort(key=lambda x: -x[1])
     ic = signal_ic(track["snaps"], last, adj)
+    # alpha bersih: biaya pulang-pergi dibebankan sekali per kohort (beli di snapshot, jual hari ini); SPY dianggap ETF
+    # tanpa biaya berarti (dibandingkan dengan menahan indeks)
+    def avg_alpha_net(k):
+        a = avg_alpha(k)
+        return _r(a - TRADE_COST) if a is not None and k != "h" else a
+
     return {
+        "cost": TRADE_COST,
+        "alpha_net": {"sb": avg_alpha_net("sb"), "b": avg_alpha_net("b"), "h": avg_alpha("h")},
         "ic": ic, "reweight": reweight(ic),
         "since": track["snaps"][0]["d"], "n_snaps": len(track["snaps"]),
         "cohorts": cohorts[::-1][:60],
@@ -534,9 +552,18 @@ def signal_ic(snaps, last_px, adj=None):
     for k, n in names.items():
         row = {"key": k, "name": n}
         for b in buckets:
-            xs = acc[k][b]
+            xs = acc[k][b]  # urut dari snapshot terlama ke terbaru
             row[b] = _r(float(np.mean(xs)), 3) if xs else None
             row[b + "_n"] = len(xs)
+            # uji ketahanan (paruh 1 vs paruh 2): faktor baru dianggap stabil bila kedua paruh searah & cukup kuat.
+            # Snapshot harian dengan jendela return yang tumpang tindih tidak saling bebas, jadi t-stat biasa
+            # menyesatkan; pemisahan dua periode jauh lebih jujur.
+            if len(xs) >= 6:
+                h = len(xs) // 2
+                a_, b_ = float(np.mean(xs[:h])), float(np.mean(xs[h:]))
+                row[b + "_a"], row[b + "_b"] = _r(a_, 3), _r(b_, 3)
+                row[b + "_pos"] = _r(float(np.mean([x > 0 for x in xs])), 2)
+                row[b + "_stab"] = bool(a_ * b_ > 0 and min(abs(a_), abs(b_)) >= 0.02)
         out.append(row)
     return out
 

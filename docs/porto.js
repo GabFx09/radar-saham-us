@@ -199,6 +199,7 @@ function renderPorto(el) {
     ${typeof sptCard === 'function' ? sptCard(rows) : '<div class="card card-pad">–</div>'}` : ''}
     ${tab === 'analisis' ? (rows.length ? `
     ${idrCard(tot.val, expRet, idr)}
+    ${typeof tradeBehaviorCard === 'function' ? tradeBehaviorCard() : ''}
     <div class="grid-2" style="margin-top:12px">
       <div class="card card-pad"><h3 class="card-title">Alokasi Sektor</h3>
         <div class="port-wrap"><div class="donut-box">${svg}<div class="donut-c"><b>${rows.length}</b><span>saham</span></div></div>
@@ -349,12 +350,20 @@ function ownValCard(s, order = 6) {
 function icCard(tr) {
   if (!tr || !tr.ic) return '';
   const rows = tr.ic, any = rows.some((r) => r.h5_n || r.h20_n || r.h60_n);
-  const c = (v, n) => v == null ? `<td class="r faint">–</td>` : `<td class="r mono ${v >= 0.05 ? 'up' : v <= -0.05 ? 'down' : ''}">${v >= 0 ? '+' : ''}${v.toFixed(3)}<div class="faint small">${n} snap</div></td>`;
+  const sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(3);
+  const c = (r, b) => {
+    const v = r[b], n = r[b + '_n'], st = r[b + '_stab'];
+    if (v == null) return `<td class="r faint">–</td>`;
+    const tip = r[b + '_a'] != null ? `Paruh lama ${sg(r[b + '_a'])} · paruh baru ${sg(r[b + '_b'])} · positif ${Math.round((r[b + '_pos'] || 0) * 100)}% snapshot` : '';
+    const mark = st == null ? '' : st ? ' <span class="up" title="Kedua paruh periode searah">✓</span>' : ' <span class="warn-t" title="Paruh lama & baru tidak searah / lemah">≈</span>';
+    return `<td class="r mono ${v >= 0.05 ? 'up' : v <= -0.05 ? 'down' : ''}" title="${tip}">${sg(v)}${mark}<div class="faint small">${n} snap</div></td>`;
+  };
   return `<div class="card card-pad">
     <h3 class="card-title">Uji Sinyal (Information Coefficient)</h3>
     <p class="small muted" style="margin:-6px 0 10px">Korelasi peringkat antara nilai faktor saat dicatat dan return sesudahnya, untuk semua saham. IC ≥ +0,05 yang konsisten = faktor benar-benar memprediksi; negatif = berlawanan.</p>
     ${any ? `<div class="cmp-scroll"><table class="hold-table"><tr><th>Faktor</th><th class="r">≥1 mgg</th><th class="r">≥1 bln</th><th class="r">≥3 bln</th></tr>
-      ${rows.map((r) => `<tr><td>${esc(r.name)}</td>${c(r.h5, r.h5_n)}${c(r.h20, r.h20_n)}${c(r.h60, r.h60_n)}</tr>`).join('')}</table></div>`
+      ${rows.map((r) => `<tr><td>${esc(r.name)}</td>${c(r, 'h5')}${c(r, 'h20')}${c(r, 'h60')}</tr>`).join('')}</table></div>
+      <p class="small faint" style="margin:6px 0 0">✓ = stabil: IC paruh periode lama &amp; baru searah dan ≥ 0,02 (uji paruh 1 vs paruh 2). ≈ = belum stabil — bisa kebetulan; pada penyetelan bobot otomatis hanya dihitung separuh.</p>`
       : '<p class="small faint">Data faktor mulai dicatat — hasil pertama muncul setelah ±1 minggu, dan baru bermakna setelah beberapa bulan.</p>'}
     ${rwHtml(tr.reweight, tr.since)}
   </div>`;

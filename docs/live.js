@@ -65,7 +65,7 @@ function liveLabel() {
   // makro dimuat terpisah -> terapkan harga live setelahnya
   if (typeof loadMakro === 'function') {
     const _lm = loadMakro;
-    loadMakro = async function () { const m = await _lm(); applyLive(); return m; };
+    loadMakro = async function () { const m = await _lm(); if (!App.live) { try { await loadLive(); } catch (e) { /* */ } } applyLive(); return m; };
   }
 
   const refresh = (force) => loadLive().then((changed) => {

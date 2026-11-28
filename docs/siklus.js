@@ -1,3 +1,14 @@
+/** hasil uji: bulan mana yang return-nya benar-benar berbeda dari bulan lain setelah koreksi uji berganda */
+function seasTestNote(seas) {
+  if (!seas || !seas.some((m) => m.p != null)) return '';
+  const raw = seas.filter((m) => m.sig_raw), bon = seas.filter((m) => m.sig), bh = seas.filter((m) => m.sig_bh && !m.sig);
+  const nm = (xs) => xs.map((m) => `<b>${esc(m.m)}</b> (${fmt.pct(m.diff, 1)} vs bulan lain)`).join(', ');
+  return `<div class="cyc-callout" style="margin:0 0 12px"><b>Uji statistik (Welch + koreksi 12 uji sekaligus):</b>
+    ${bon.length ? `yang benar-benar berbeda nyata hanya ${nm(bon)}.` : 'tidak ada bulan yang berbeda nyata dari bulan lain.'}
+    ${bh.length ? ` Hampir nyata (koreksi FDR): ${nm(bh)}.` : ''}
+    ${raw.length > bon.length ? ` ${raw.filter((m) => !m.sig && !m.sig_bh).map((m) => esc(m.m)).join(', ') || ''}${raw.filter((m) => !m.sig && !m.sig_bh).length ? ' tampak signifikan tanpa koreksi, tetapi itu wajar terjadi kebetulan bila 12 bulan diuji bersamaan.' : ''}` : ''}
+    Bulan lainnya: perbedaan masih dalam batas kebetulan — jangan dijadikan alasan utama jual/beli.</div>`;
+}
 /* =====================================================================
    Radar Saham US — Siklus Pasar 100 Tahun (S&P 500 sejak 1927)
    (memakai helper global dari app.js & quant.js)
@@ -135,7 +146,9 @@ async function renderSiklus(el) {
   signals.push({ s: pres[pk - 1].avg < 0.06 ? 'warn' : 'ok', t: `${now.date.slice(0, 4)} = <b>${esc(pres[pk - 1].name)}</b> siklus presiden: rata-rata historis ${fmt.pct(pres[pk - 1].avg, 1)} (naik ${winTxt(pres[pk - 1].win)} tahun). Tahun depan = <b>${esc(pres[nk - 1].name)}</b>: rata-rata ${fmt.pct(pres[nk - 1].avg, 1)}, naik ${winTxt(pres[nk - 1].win)} tahun.` });
   if (pk === 2) signals.push({ s: 'ok', t: `Pola terkuat yang ditemukan: dari titik terendah tahun midterm, S&amp;P 500 naik rata-rata <b>${fmt.pct(c.midterm_rally.avg, 0)}</b> dalam 12 bulan — positif di ${Math.round(c.midterm_rally.win * c.midterm_rally.n)} dari ${c.midterm_rally.n} siklus.` });
   const ns = now.season_next3;
-  signals.push({ s: ns[0].avg > 0.01 ? 'ok' : 'warn', t: `Musiman: ${ns.map((m) => `${m.m} ${fmt.pct(m.avg, 1)} (naik ${winTxt(m.win)})`).join(' · ')} — periode November–April historis adalah "enam bulan terbaik".` });
+  const allS = (c.seasonal && c.seasonal.all) || [];
+  const robust = ns.filter((m) => (allS.find((x) => x.m === m.m) || {}).sig);
+  signals.push({ s: ns[0].avg > 0.01 ? 'ok' : 'warn', t: `Musiman: ${ns.map((m) => `${m.m} ${fmt.pct(m.avg, 1)} (naik ${winTxt(m.win)})`).join(' · ')} — periode November–April historis adalah "enam bulan terbaik".${allS.some((x) => x.p != null) ? (robust.length ? ` ${robust.map((m) => m.m).join(', ')} lolos uji statistik.` : ' <i>Catatan: selisih bulan-bulan ini belum lolos uji statistik — anggap kecenderungan lemah, bukan pola pasti.</i>') : ''}` });
   signals.push({ s: now.trend_dev > 0.4 ? 'bad' : now.trend_dev > 0.2 ? 'warn' : 'ok', t: `Harga ${fmt.pct(now.trend_dev, 0)} di atas tren 100 tahun (persentil ${Math.round(now.trend_pct * 100)}). Secara historis, saat pasar berada di kelompok 20% termahal, return 10 tahun berikutnya rata-rata hanya <b>${fmt.pct(q5[4].f10, 1)}/thn</b> vs <b>${fmt.pct(q5[0].f10, 1)}/thn</b> saat termurah.` });
 
   el.innerHTML = `<div class="fade-in">
@@ -201,6 +214,7 @@ async function renderSiklus(el) {
         <div class="seg-mini" id="seasSel">${[['all', 'Semua'], ['since1950', 'Sejak 1950'], ['last30', '30 thn']].map(([k, n]) => `<button data-k="${k}" class="${k === period ? 'on' : ''}">${n}</button>`).join('')}</div></div>
       ${barsSvg(seas.map((m, i) => ({ label: m.m, sub: winTxt(m.win), v: m.avg, hl: i === curMonth })), { h: 210, w: wideW() })}
       <p class="small faint" style="margin:4px 0 12px">Batang = return rata-rata bulan itu; angka bawah = persentase tahun bulan itu naik. Biru = bulan berjalan.</p>
+      ${seasTestNote(seas)}
       <div class="kv k3">
         <div><div class="l">Nov–Apr ("6 bulan terbaik")</div><div class="v up">${fmt.pct(c.sell_in_may.winter.avg, 1)}</div><div class="s">naik ${winTxt(c.sell_in_may.winter.win)} tahun</div></div>
         <div><div class="l">Mei–Okt</div><div class="v ${cls(c.sell_in_may.summer.avg)}">${fmt.pct(c.sell_in_may.summer.avg, 1)}</div><div class="s">naik ${winTxt(c.sell_in_may.summer.win)} tahun</div></div>

@@ -182,11 +182,41 @@ async function renderMakro(el) {
     <h1 class="page-title">Monitor Makro</h1>
     <p class="page-sub">Sentimen, suku bunga, sinyal resesi, rotasi sektor, dan lintas aset · data ${fmt.date(mk.generated || App.data.generated, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
     ${makroSummary(mk)}
+    ${econCard()}
     <div class="grid-2">${fgHtml}${curveHtml}</div>
     <section class="section">${xaHtml}</section>
     <section class="section">${rotHtml}</section>
     <p class="disclaimer">Indikator makro membantu membaca kondisi pasar, bukan alat penentu waktu jual-beli yang presisi.</p>
   </div>`;
+}
+
+/* ------------------------------------------------------------ AGENDA EKONOMI AS (live.json → econ) */
+function econWib(t) {
+  const d = new Date(t);
+  return d.toLocaleDateString('id-ID', { weekday: 'short', timeZone: 'Asia/Jakarta' }) + ' ' +
+    d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }) + ' WIB';
+}
+function econNext(hours = 24) {
+  const ev = (App.live && App.live.econ) || [];
+  const now = Date.now();
+  return ev.filter((e) => e.big && Date.parse(e.t) > now - 30 * 6e4 && Date.parse(e.t) < now + hours * 36e5);
+}
+function econCard() {
+  const ev = (App.live && App.live.econ) || [];
+  if (!ev.length) return '';
+  const now = Date.now();
+  const rows = ev.filter((e) => Date.parse(e.t) > now - 36 * 36e5);
+  if (!rows.length) return '';
+  return `<div class="card card-pad econ" id="mk-econ">
+    <h3 class="card-title">Agenda ekonomi AS minggu ini</h3>
+    <p class="small muted" style="margin:0 0 8px">Rilis berdampak tinggi (CPI, FOMC, NFP, PCE, PDB) sering membuat saham bergerak tajam. Hindari membeli tergesa beberapa jam sebelum rilis besar.</p>
+    <table class="econ-t">${rows.map((e) => {
+      const past = Date.parse(e.t) < now;
+      return `<tr class="${past ? 'past' : ''} ${e.big ? 'big' : ''}"><td class="nw">${econWib(e.t)}</td>
+        <td><span class="imp ${e.imp}">${e.imp === 'tinggi' ? '●●' : '●'}</span> ${esc(e.id || e.title)}${e.id ? `<small class="faint"> · ${esc(e.title)}</small>` : ''}</td>
+        <td class="nw r">${e.act ? `<b>${esc(e.act)}</b>` : ''}${e.fc ? `<small class="faint"> prk ${esc(e.fc)}</small>` : ''}${e.prev ? `<small class="faint"> sblm ${esc(e.prev)}</small>` : ''}</td></tr>`;
+    }).join('')}</table>
+    <p class="small faint" style="margin:6px 0 0">Sumber: ForexFactory (faireconomy) · prk = perkiraan, sblm = sebelumnya.</p></div>`;
 }
 
 /** ringkasan singkat kondisi pasar dari data makro (dibaca dulu sebelum grafik-grafik di bawah) */
@@ -236,7 +266,10 @@ function makroHomeStrip() {
   };
   const fg = mk.fg;
   const cv = mk.curve;
+  const nx = econNext(24);
+  const econLine = nx.length ? `<a class="econ-alert" href="#/makro">🗓 <b>${nx.map((e) => esc(e.id || e.title)).slice(0, 3).join(', ')}</b> · ${econWib(nx[0].t)} — pasar bisa bergejolak, hindari beli tergesa sebelum rilis</a>` : '';
   return `<section class="section"><div class="section-head"><div><h2>Makro Hari Ini</h2></div><a class="link" href="#/makro">Monitor ›</a></div>
+    ${econLine}
     <div class="home-macro">
       ${fg ? `<a href="#/makro"><div class="l">Fear &amp; Greed</div><div class="v" style="color:${fgColor(fg.now)}">${Math.round(fg.now)}</div><div class="c" style="color:${fgColor(fg.now)}">${esc(fg.label)}</div></a>` : ''}
       ${cell('^VIX', 'VIX')}${cell('^TNX', 'UST 10 thn')}

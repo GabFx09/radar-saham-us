@@ -459,12 +459,14 @@ async function renderStrategi(el) {
   const tr = q.track;
   const trackHtml = tr && tr.cohorts && tr.cohorts.length ? (() => {
     const a = tr.alpha || {};
-    const alphaBox = (k, n) => `<div><div class="l">${n}</div><div class="v ${cls(a[k])}">${a[k] == null ? '–' : fmt.pct(a[k], 2)}</div><div class="s">rata-rata vs S&amp;P 500</div></div>`;
+    const an = tr.alpha_net || {};
+    const alphaBox = (k, n) => `<div><div class="l">${n}</div><div class="v ${cls(a[k])}">${a[k] == null ? '–' : fmt.pct(a[k], 2)}</div><div class="s">rata-rata vs S&amp;P 500${k !== 'h' && an[k] != null ? `<br>bersih biaya: <b class="${cls(an[k])}">${fmt.pct(an[k], 2)}</b>` : ''}</div></div>`;
     return `<div class="card card-pad">
       <h3 class="card-title"><span class="ico">📒</span>Rekam Jejak Rekomendasi</h3>
       <p class="small muted" style="margin:-6px 0 12px">Setiap hari daftar rekomendasi disimpan beserta harganya, lalu dilacak kinerjanya — tanpa diedit. Dicatat sejak <b>${fmt.date(tr.since)}</b> (${tr.n_snaps} snapshot).</p>
       ${trackBanner(tr)}
       <div class="kv k3">${alphaBox('sb', 'Strong Buy')}${alphaBox('b', 'Buy')}${alphaBox('h', 'Hindari')}</div>
+      ${tr.cost != null ? `<p class="small faint" style="margin:6px 0 0">Bersih biaya = dikurangi biaya beli + jual ${fmt.pct(tr.cost, 1, false)} (komisi, selisih bid/ask, slippage) dibanding menahan S&amp;P 500. Rekomendasi baru berguna bila alpha bersihnya tetap positif.</p>` : ''}
       <div class="cmp-scroll" style="margin-top:12px"><table class="hold-table">
         <tr><th>Sejak</th><th class="r">Strong Buy</th><th class="r">Buy</th><th class="r">Hindari</th><th class="r">S&amp;P 500</th></tr>
         ${tr.cohorts.slice(0, 20).map((c) => `<tr><td>${fmt.date(c.d, { day: 'numeric', month: 'short' })}<div class="faint small">${c.days} hari</div></td>

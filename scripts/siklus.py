@@ -101,6 +101,37 @@ def stat(xs):
             "best": _r(xs.max()), "worst": _r(xs.min())}
 
 
+def month_test(xs, rest):
+    """Uji Welch: apakah return bulan ini berbeda dari rata-rata bulan lain? (bukan dari nol — pasar memang naik
+    rata-rata tiap bulan). p dua sisi dengan pendekatan normal (n tiap bulan ≥ 30 tahun)."""
+    xs = np.asarray([x for x in xs if x is not None and math.isfinite(x)], float)
+    rest = np.asarray([x for x in rest if x is not None and math.isfinite(x)], float)
+    if len(xs) < 10 or len(rest) < 10:
+        return {}
+    se = math.sqrt(xs.var(ddof=1) / len(xs) + rest.var(ddof=1) / len(rest))
+    if se <= 0:
+        return {}
+    t = (xs.mean() - rest.mean()) / se
+    p = math.erfc(abs(t) / math.sqrt(2))
+    return {"diff": _r(xs.mean() - rest.mean()), "t": _r(t, 2), "p": _r(p, 4)}
+
+
+def mark_multiple(rows, alpha=0.05):
+    """Koreksi uji berganda (12 bulan diuji sekaligus): Bonferroni (ketat) & Benjamini-Hochberg (FDR).
+    Tanpa koreksi, ± 1 dari 12 bulan akan tampak 'signifikan' hanya karena kebetulan."""
+    ps = [(i, r["p"]) for i, r in enumerate(rows) if r.get("p") is not None]
+    m = len(ps)
+    if not m:
+        return
+    for i, p in ps:
+        rows[i]["sig_raw"] = p < alpha
+        rows[i]["sig"] = p * m < alpha  # Bonferroni
+    ps.sort(key=lambda x: x[1])
+    k = max([j + 1 for j, (_, p) in enumerate(ps) if p <= (j + 1) / m * alpha], default=0)
+    for j, (i, _) in enumerate(ps):
+        rows[i]["sig_bh"] = j < k
+
+
 def forward_returns(c, mask, days):
     """Return rata-rata `days` hari bursa ke depan pada hari-hari di mana mask True (sampel tidak tumpang tindih
     dipakai untuk win-rate agar tidak bias)."""
@@ -167,7 +198,8 @@ def build(log=print, close=None):
         rows = []
         for m in range(1, 13):
             s = mrs[mrs.index.month == m].values
-            rows.append({"m": BULAN[m - 1], **stat(s)})
+            rows.append({"m": BULAN[m - 1], **stat(s), **month_test(s, mrs[mrs.index.month != m].values)})
+        mark_multiple(rows)
         return rows
     out["seasonal"] = {"all": season(mr_full), "since1950": season(mr_full[mr_full.index.year >= 1950]),
                        "last30": season(mr_full[mr_full.index.year >= cur_year - 30])}

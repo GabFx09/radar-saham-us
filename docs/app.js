@@ -753,6 +753,7 @@ function renderDetail(el, sym) {
       <div class="tp"><div class="l">Target 2 (bull)</div><div class="v up">${fmt.usd(p.target2)}</div></div>
     </div>
     <p class="small muted" style="margin:12px 0 0">Risk/Reward: <b class="mono">${p.rr == null ? '–' : '1 : ' + fmt.num(p.rr, 1)}</b>. Zona beli memakai ATR &amp; MA50; stop loss ≈ 2.5× ATR di bawah harga. Cocok untuk investor menengah (6–12 bulan) — investor jangka panjang bisa mengabaikan stop dan fokus pada fundamental.</p>
+    ${typeof posSizeHtml === 'function' ? posSizeHtml(s) : ''}
   </div>`;
 
   // ---------- teknikal
